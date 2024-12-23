@@ -1,4 +1,4 @@
-import { givenBuilder } from "../src/newStepBuilders";
+import { givenBuilder } from "../src/given";
 import { SampleGivenState } from "./testUtils";
 
 // Simplest possible example
