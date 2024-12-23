@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type StepType = "given" | "when" | "then";
-type InferAndReplace<T, U> = never extends T ? U : T;
+// type InferAndReplace<T, U> = never extends T ? U : T;
 type HasKeys<T> =
   T extends Record<any, any> ? (keyof T extends never ? never : T) : T;
 type EmptyObject = Record<string, never>;
@@ -87,17 +87,27 @@ const givenDependencies =
     };
   };
 
+const isString = (
+  statement: string | ((...args: [...any]) => string)
+): statement is string => typeof statement === "string";
+
 const givenStatement =
   <ResolvedStepType extends StepType, GivenState>(stepType: ResolvedStepType) =>
-  <Statement extends (...args: [...any]) => string>(
-    statement: Statement | string
+  <Statement extends ((...args: [...any]) => string) | string>(
+    statement: Statement
   ) => {
-    const normalizedStatement =
-      typeof statement === "string"
-        ? ((() => statement) as Statement)
-        : statement;
+    const possibleString = isString(statement);
+    let normalizedStatement: Statement extends string
+      ? () => string
+      : Statement;
+    if (possibleString) {
+      normalizedStatement = (() => statement) as any;
+    } else {
+      normalizedStatement = statement as any;
+    }
     type NormalizedStatement = typeof normalizedStatement;
-    type Variables = GetFunctionArgs<NormalizedStatement>;
+
+    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
     const dependencyFunc = givenDependencies<
       NormalizedStatement,
       ResolvedStepType,
