@@ -119,3 +119,12 @@ givenBuilder<SampleGivenState>()
       b: `I love ${strictA}`,
     };
   });
+
+givenBuilder<SampleGivenState>()
+  .statement("Given a user")
+  // @ts-expect-error - Should not compile since the return type is not a partial of given state
+  .step(() => {
+    return {
+      f: "hello",
+    };
+  });
