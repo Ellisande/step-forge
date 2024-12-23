@@ -19,3 +19,9 @@ export type GetFunctionArgs<T> = T extends (...args: infer A) => any
 export const isString = (
   statement: string | ((...args: [...any]) => string)
 ): statement is string => typeof statement === "string";
+
+export type EmptyDependencies = {
+  given: EmptyObject;
+  when: EmptyObject;
+  then: EmptyObject;
+};

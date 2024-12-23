@@ -57,3 +57,18 @@ export const requireFromThen = <T>(
     {} as { [key in keyof T]: T[key] }
   );
 };
+
+export const typeCoercer = (value: string) => {
+  // Try to parse as integer first
+  const numberValue = parseInt(value, 10);
+  if (!isNaN(numberValue)) {
+    return numberValue;
+  }
+
+  // Check for boolean values
+  if (value === "true") return true;
+  if (value === "false") return false;
+
+  // Return original string if no other type matches
+  return value;
+};

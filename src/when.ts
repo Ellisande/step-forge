@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
+  EmptyDependencies,
   EmptyObject,
   GetFunctionArgs,
   isString,
@@ -11,7 +12,7 @@ import { addStep } from "./common";
 
 const whenDependencies =
   <
-    Statement,
+    Statement extends (...args: any[]) => string,
     ResolvedStepType extends StepType,
     Variables,
     GivenState,
@@ -42,8 +43,14 @@ const whenDependencies =
         : WhenState[K];
     };
     type Dependencies = {
-      given?: GivenDeps;
-      when?: WhenDeps;
+      given: GivenDeps;
+      when: WhenDeps;
+      then: EmptyObject;
+    };
+    const fullDependencies: Dependencies = {
+      given: dependencies.given ?? ({} as GivenDeps),
+      when: dependencies.when ?? ({} as WhenDeps),
+      then: {},
     };
     return {
       step: addStep<
@@ -57,7 +64,7 @@ const whenDependencies =
         RestrictedGivenState,
         RestrictedWhenState,
         never
-      >(statement, stepType, dependencies),
+      >(statement, stepType, fullDependencies),
     };
   };
 
@@ -89,7 +96,7 @@ const whenStatement =
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
-      EmptyObject,
+      EmptyDependencies,
       Variables,
       GivenState,
       WhenState,
@@ -97,7 +104,7 @@ const whenStatement =
       never,
       never,
       never
-    >(normalizedStatement, stepType, {});
+    >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
       step: stepFunc,
