@@ -1,4 +1,4 @@
-import { merge, isArray, isPlainObject } from "lodash";
+import _ from "lodash";
 
 export type WorldState<State> = {
   readonly [K in keyof State]?: State[K];
@@ -9,9 +9,9 @@ export type MergeableWorldState<T> = WorldState<T> & {
 };
 
 function mergeCustomizer(objValue: unknown, srcValue: unknown) {
-  if (isArray(objValue)) {
+  if (_.isArray(objValue)) {
     return objValue.concat(srcValue);
-  } else if (objValue && !isPlainObject(objValue) && objValue !== srcValue) {
+  } else if (objValue && !_.isPlainObject(objValue) && objValue !== srcValue) {
     throw new Error(
       `Merge would have destroyed previous value ${objValue} with ${srcValue}`
     );
@@ -25,7 +25,7 @@ export const createMergeableState = <T>(
   return {
     ...state,
     merge: (newState: Partial<T>) => {
-      state = merge({ ...state }, newState, mergeCustomizer);
+      state = _.merge({ ...state }, newState, mergeCustomizer);
     },
   };
 };
@@ -36,21 +36,48 @@ export type MergeableWorld<Given, When, Then> = {
   then: MergeableWorldState<Then>;
 };
 
-class BasicWorld<Given, When, Then> {
+export class BasicWorld<Given, When, Then> {
   private givenState: WorldState<Given> = {};
   private whenState: WorldState<When> = {};
   private thenState: WorldState<Then> = {};
 
   public get given(): MergeableWorldState<Given> {
-    return createMergeableState(this.givenState);
+    return {
+      ...this.givenState,
+      merge: (newState: Partial<Given>) => {
+        this.givenState = _.merge(
+          { ...this.givenState },
+          newState,
+          mergeCustomizer
+        );
+      },
+    };
   }
 
   public get when(): MergeableWorldState<When> {
-    return createMergeableState(this.whenState);
+    return {
+      ...this.whenState,
+      merge: (newState: Partial<When>) => {
+        this.whenState = _.merge(
+          { ...this.whenState },
+          newState,
+          mergeCustomizer
+        );
+      },
+    };
   }
 
   public get then(): MergeableWorldState<Then> {
-    return createMergeableState(this.thenState);
+    return {
+      ...this.thenState,
+      merge: (newState: Partial<Then>) => {
+        this.thenState = _.merge(
+          { ...this.thenState },
+          newState,
+          mergeCustomizer
+        );
+      },
+    };
   }
 }
 

@@ -4,7 +4,7 @@ import {
   Then as CucThen,
   When as CucWhen,
 } from "@cucumber/cucumber";
-import { pick } from "lodash";
+import _ from "lodash";
 
 import { StepType } from "./builderTypeUtils";
 import {
@@ -56,7 +56,7 @@ export const addStep =
       ? Partial<GivenState>
       : ResolvedStepType extends "when"
         ? Partial<WhenState>
-        : Partial<ThenState>
+        : Partial<ThenState> | void
   ) => {
     const statementFunction = statement;
     const {
@@ -73,7 +73,6 @@ export const addStep =
         const argCount = statementFunction.length;
         const argMatchers = Array.from({ length: argCount }, () => "{string}");
         const statement = statementFunction(...argMatchers);
-        console.error("The statement is", statement);
         const cucStepFunction = Object.defineProperty(
           async function (
             this: MergeableWorld<GivenState, WhenState, ThenState>,
@@ -88,7 +87,7 @@ export const addStep =
               this
             );
             const narrowedGiven = {
-              ...pick(this.given, Object.keys(givenDependencies ?? {})),
+              ..._.pick(this.given, Object.keys(givenDependencies ?? {})),
               ...ensuredGivenValues,
             };
             const requiredWhenKeys = Object.entries(whenDependencies ?? {})
@@ -99,7 +98,7 @@ export const addStep =
               this
             );
             const narrowedWhen = {
-              ...pick(this.when, Object.keys(whenDependencies ?? {})),
+              ..._.pick(this.when, Object.keys(whenDependencies ?? {})),
               ...ensuredWhenValues,
             };
             const requiredThenKeys = Object.entries(thenDependencies ?? {})
@@ -110,7 +109,7 @@ export const addStep =
               this
             );
             const narrowedThen = {
-              ...pick(this.then, Object.keys(thenDependencies ?? {})),
+              ..._.pick(this.then, Object.keys(thenDependencies ?? {})),
               ...ensuredThenValues,
             };
             const result = await stepFunction({

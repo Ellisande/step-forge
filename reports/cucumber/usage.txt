@@ -1,0 +1,42 @@
+┌─────────────────────────────┬──────────┬───────────────────────────────────────────────────────┐
+│ Pattern / Text              │ Duration │ Location                                              │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ I started                   │ 3.93ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   I started                 │ 3.93ms   │ features/basic.feature:4                              │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ a user named {string}       │ 1.94ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   a user named "John"       │ 1.94ms   │ features/basic.feature:14                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ I deposit {string} {string} │ 1.50ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   I deposit "1000" "USD"    │ 1.50ms   │ features/exported.feature:5                           │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ the user's name is {string} │ 1.21ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   the user's name is "John" │ 1.21ms   │ features/basic.feature:21                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ I name the user {string}    │ 1.14ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   I name the user "John"    │ 1.14ms   │ features/basic.feature:20                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ the balance is {string}     │ 0.96ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   the balance is "1000"     │ 0.96ms   │ features/exported.feature:6                           │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ there is a user             │ 0.68ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   there is a user           │ 0.84ms   │ features/basic.feature:11                             │
+│   there is a user           │ 0.52ms   │ features/basic.feature:16                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ everything was good         │ 0.47ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   everything was good       │ 0.47ms   │ features/basic.feature:6                              │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ I save the user             │ 0.42ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   I save the user           │ 0.68ms   │ features/basic.feature:10                             │
+│   I save the user           │ 0.16ms   │ features/basic.feature:15                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ a user                      │ 0.41ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   a user                    │ 0.68ms   │ features/basic.feature:9                              │
+│   a user                    │ 0.14ms   │ features/basic.feature:19                             │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ I got here                  │ 0.39ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   I got here                │ 0.39ms   │ features/basic.feature:5                              │
+├─────────────────────────────┼──────────┼───────────────────────────────────────────────────────┤
+│ a bank user                 │ 0.32ms   │ file:/Users/ellisande/dev/step-forge/src/common.ts:63 │
+│   a bank user               │ 0.32ms   │ features/exported.feature:4                           │
+└─────────────────────────────┴──────────┴───────────────────────────────────────────────────────┘
