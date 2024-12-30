@@ -1,12 +1,12 @@
 {
-  "name": "vite-vanilla-ts-lib-starter",
-  "private": true,
-  "version": "0.0.4",
-  "module": "./dist/vite-vanilla-ts-lib-starter.js",
+  "name": "step-forge",
+  "private": false,
+  "version": "0.0.1",
+  "module": "./dist/step-forge.js",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/vite-vanilla-ts-lib-starter.js"
+      "import": "./dist/step-forge.js"
     },
     "./dist/": {
       "import": "./dist/"
