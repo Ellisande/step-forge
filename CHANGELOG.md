@@ -1,6 +1,10 @@
 # Change Log
 
-All notable changes to the "vite-vanilla-ts-lib-starter" project will be documented in this file.
+All notable changes to the "@step-forge/step-forge" project will be documented in this file.
+
+## [0.0.5] - 2024-12-31
+
+- Add support for exporting steps
 
 ## [0.0.4] - 2024-07-30
 
