@@ -14,7 +14,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "vite --host",
-    "build": "rimraf build/**/* && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles ./package.json build",
+    "build": "rimraf build/**/* && rimraf dist/**/* && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles -u 1 \"dist/**/*\" \"package.json\" build",
     "test:cucumber": "NODE_ENV=test NODE_OPTIONS=\"--experimental-specifier-resolution=node --loader ts-node/esm\" TS_NODE_PROJECT=./tsconfig.cucumber.json cucumber-js -p default",
     "test:ci": "NODE_ENV=test cucumber-js -p ci",
     "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none cucumber-js -p all 2> /dev/null",
