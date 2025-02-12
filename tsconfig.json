@@ -8,9 +8,9 @@
     },
     "target": "ESNext",
     "useDefineForClassFields": true,
-    "module": "ESNext",
+    "module": "NodeNext",
     "lib": ["ESNext", "DOM"],
-    "moduleResolution": "Node",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "sourceMap": true,
     "resolveJsonModule": true,
@@ -23,7 +23,9 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["vite/client", "node"],
     "declaration": true,
-    "declarationDir": "./dist/types"
+    "declarationMap": true,
+    "declarationDir": "./dist/types",
+    "composite": true
   },
   "include": ["src"],
   "exclude": ["**/*.test.ts", "node_modules", "test/**", ".history/**", "dist"]

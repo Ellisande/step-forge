@@ -1,11 +1,20 @@
-const config = {
+import type { Config } from 'dts-bundle-generator';
+
+const config: Config = {
+  compilationOptions: {
+    preferredConfigPath: './tsconfig.json',
+  },
   entries: [
     {
-      filePath: "./src/index.ts",
-      outFile: "./build/dist/index.d.ts",
-      noCheck: false,
+      filePath: './src/index.ts',
+      outFile: './dist/types/index.d.ts',
+      output: {
+        noBanner: true,
+        exportReferencedTypes: true,
+        inlineDeclareExternals: true,
+      },
     },
   ],
 };
 
-module.exports = config;
+export default config;
