@@ -1,20 +1,21 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.6",
-  "module": "./dist/step-forge.js",
+  "version": "0.0.7.rc-1",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/step-forge.js"
-    },
-    "./dist/": {
-      "import": "./dist/"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/step-forge.js",
+      "default": "./dist/step-forge.js"
     }
   },
-  "types": "./dist/index.d.ts",
+  "types": "./dist/types/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite --host",
-    "build": "rimraf build/**/* && rimraf dist/**/* && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles -u 1 \"dist/**/*\" \"package.json\" build",
+    "build": "rimraf dist && tsc --emitDeclarationOnly --outDir dist/types && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts",
     "test:cucumber": "NODE_ENV=test NODE_OPTIONS=\"--experimental-specifier-resolution=node --loader ts-node/esm\" TS_NODE_PROJECT=./tsconfig.cucumber.json cucumber-js -p default",
     "test:ci": "NODE_ENV=test cucumber-js -p ci",
     "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none cucumber-js -p all 2> /dev/null",

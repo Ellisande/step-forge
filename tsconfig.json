@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "src",
+    "outDir": "dist/types",
     "paths": {
       "@/*": ["./src/*"],
       "@@/*": ["./*"]
@@ -15,6 +16,7 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "noEmit": false,
+    "emitDeclarationOnly": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
@@ -24,5 +26,5 @@
     "declarationDir": "./dist/types"
   },
   "include": ["src"],
-  "exclude": ["**/*.test.ts", "node_modules", "test/**", ".history/**"]
+  "exclude": ["**/*.test.ts", "node_modules", "test/**", ".history/**", "dist"]
 }

@@ -7,22 +7,19 @@ const getPackageName = () => {
   return packageJson.name;
 };
 
-const fileName = {
-  es: `${getPackageName()}.js`,
-};
-
-const formats = Object.keys(fileName) as Array<keyof typeof fileName>;
-
 export default defineConfig({
   base: "./",
   build: {
-    outDir: "./build/dist",
+    outDir: "dist",
     lib: {
       entry: path.resolve(__dirname, "src/index.ts"),
-      name: `step-forge`,
-      formats,
-      fileName: format => fileName[format],
+      name: "step-forge",
+      formats: ["es"],
+      fileName: () => "step-forge.js"
     },
+    rollupOptions: {
+      external: Object.keys(packageJson.dependencies || {})
+    }
   },
   test: {
     watch: false,
