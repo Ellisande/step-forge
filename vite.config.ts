@@ -14,8 +14,8 @@ export default defineConfig({
     lib: {
       entry: path.resolve(__dirname, "src/index.ts"),
       name: "step-forge",
-      formats: ["es"],
-      fileName: () => "step-forge.js"
+      formats: ["es", "cjs"],
+      fileName: (format) => `step-forge.${format === "es" ? "js" : "cjs"}`
     },
     rollupOptions: {
       external: Object.keys(packageJson.dependencies || {})

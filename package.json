@@ -1,16 +1,16 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.7-beta.3",
+  "version": "0.0.7-beta.4",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/step-forge.js",
-      "default": "./dist/step-forge.js"
+      "require": "./dist/step-forge.cjs"
     },
     "./package.json": "./package.json"
   },
-  "main": "./dist/step-forge.js",
+  "main": "./dist/step-forge.cjs",
   "module": "./dist/step-forge.js",
   "types": "./dist/types/index.d.ts",
   "files": [
