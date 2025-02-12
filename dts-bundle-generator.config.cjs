@@ -1,6 +1,5 @@
-import type { Config } from 'dts-bundle-generator';
 
-const config: Config = {
+const config = {
   compilationOptions: {
     preferredConfigPath: './tsconfig.json',
   },
@@ -8,6 +7,10 @@ const config: Config = {
     {
       filePath: './src/index.ts',
       outFile: './dist/types/index.d.ts',
+      libraries: {
+        inlinedLibraries: [],
+        importedLibraries: ['lodash'],
+      },
       output: {
         noBanner: true,
         exportReferencedTypes: true,
@@ -17,4 +20,4 @@ const config: Config = {
   ],
 };
 
-export default config;
+module.exports = config;
