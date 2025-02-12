@@ -1,6 +1,6 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.7.rc-1",
+  "version": "0.0.7-beta",
   "type": "module",
   "exports": {
     ".": {
