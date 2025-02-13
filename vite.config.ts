@@ -18,7 +18,12 @@ export default defineConfig({
       fileName: (format) => `step-forge.${format === "es" ? "js" : "cjs"}`
     },
     rollupOptions: {
-      external: Object.keys(packageJson.dependencies || {})
+      external: Object.keys(packageJson.dependencies || {}),
+      output: {
+        format: "cjs",
+        exports: "named",
+        interop: "auto"
+      }
     }
   },
   test: {
