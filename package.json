@@ -1,7 +1,6 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.7-beta.4",
-  "type": "module",
+  "version": "0.0.7-beta.5",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
