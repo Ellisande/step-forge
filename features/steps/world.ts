@@ -13,6 +13,7 @@ export interface WhenState {
     type: string;
     token: string;
     saved: boolean;
+    age?: number;
   };
   deposit: {
     amount: number;

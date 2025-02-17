@@ -14,7 +14,7 @@ import {
   typeCoercer,
 } from "./utils";
 import { MergeableWorld } from "./world";
-
+import { Parser, stringParser } from "./parsers";
 const cucFunctionMap = {
   given: CucGiven,
   when: CucWhen,
@@ -37,6 +37,9 @@ export const addStep =
     RestrictedGivenState,
     RestrictedWhenState,
     RestrictedThenState,
+    Parsers extends { [K in keyof Variables]: Parser<any> } = {
+      [K in keyof Variables]: Parser<string>
+    }
   >(
     statement: Statement,
     stepType: ResolvedStepType,
@@ -44,7 +47,8 @@ export const addStep =
       given: {},
       when: {},
       then: {},
-    } as Dependencies
+    } as Dependencies,
+    declaredParsers?: Parsers
   ) =>
   (
     stepFunction: (input: {
@@ -71,7 +75,8 @@ export const addStep =
       stepFunction,
       register: () => {
         const argCount = statementFunction.length;
-        const argMatchers = Array.from({ length: argCount }, () => "{string}");
+        const parsers = declaredParsers as unknown as Parser<any>[] ?? Array.from({ length: argCount }, () => stringParser) as Parser<any>[]; 
+        const argMatchers = Array.from({ length: argCount }, (_, i) => parsers[i].gherkin);
         const statement = statementFunction(...argMatchers);
         const cucStepFunction = Object.defineProperty(
           async function (

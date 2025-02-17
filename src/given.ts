@@ -9,6 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const givenDependencies =
   <
@@ -16,9 +17,13 @@ const givenDependencies =
     ResolvedStepType extends StepType,
     Variables,
     GivenState,
+    Parsers extends { [K in keyof Variables]: Parser<any> } = {
+      [K in keyof Variables]: Parser<string>
+    }
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parsers
   ) =>
   <GivenDeps extends RequiredOrOptional<GivenState>>(dependencies: {
     given: GivenDeps;
@@ -46,12 +51,35 @@ const givenDependencies =
         Dependencies,
         Variables,
         GivenState,
-        never, // when state
-        never, // then state
+        never,
+        never,
         RestrictedGivenState,
-        never, // restricted when state
-        never // restricted then state
-      >(statement, stepType, fullDependencies),
+        never,
+        never,
+        Parsers
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+const givenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables,
+    GivenState
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) => <Parsers extends { [K in keyof Variables]: Parser<any> }>
+  (parsers: Parsers) => {
+    return {
+      dependencies: givenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        Parsers
+      >(statement, stepType, parsers),
     };
   };
 
@@ -77,21 +105,27 @@ const givenStatement =
       Variables,
       GivenState
     >(normalizedStatement, stepType);
-    const stepFunc = addStep<
-      ResolvedStepType,
-      NormalizedStatement,
-      EmptyDependencies,
-      Variables,
-      GivenState,
-      never,
-      never,
-      never,
-      never,
-      never
-    >(normalizedStatement, stepType);
+    
     return {
       dependencies: dependencyFunc,
-      step: stepFunc,
+      parsers: givenParsers<
+        NormalizedStatement,
+        ResolvedStepType,
+        Variables,
+        GivenState
+      >(normalizedStatement, stepType),
+      step: addStep<
+        ResolvedStepType,
+        NormalizedStatement,
+        EmptyDependencies,
+        Variables,
+        GivenState,
+        never,
+        never,
+        never,
+        never,
+        never
+      >(normalizedStatement, stepType),
     };
   };
 
