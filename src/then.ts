@@ -8,6 +8,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const thenDependencies =
   <
@@ -17,9 +18,13 @@ const thenDependencies =
     GivenState,
     WhenState,
     ThenState,
+    Parsers extends { [K in keyof Variables]: Parser<any> } = {
+      [K in keyof Variables]: Parser<string>
+    }
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parsers
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -72,8 +77,34 @@ const thenDependencies =
         ThenState,
         RestrictedGivenState,
         RestrictedWhenState,
-        RestrictedThenState
-      >(statement, stepType, fullDependencies),
+        RestrictedThenState,
+        Parsers
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+const thenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables,
+    GivenState,
+    WhenState,
+    ThenState
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) => <Parsers extends { [K in keyof Variables]: Parser<any> }>(parsers: Parsers) => {
+    return {
+      dependencies: thenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState,
+        ThenState,
+        Parsers
+      >(statement, stepType, parsers),
     };
   };
 
@@ -101,7 +132,8 @@ const thenStatement =
       Variables,
       GivenState,
       WhenState,
-      ThenState
+      ThenState,
+      never
     >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
@@ -117,6 +149,14 @@ const thenStatement =
     >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
+      parsers: thenParsers<
+        NormalizedStatement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState,
+        ThenState
+      >(normalizedStatement, stepType),
       step: stepFunc,
     };
   };

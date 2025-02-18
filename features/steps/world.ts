@@ -14,6 +14,7 @@ export interface WhenState {
     token: string;
     saved: boolean;
     age?: number;
+    balance?: number;
   };
   deposit: {
     amount: number;

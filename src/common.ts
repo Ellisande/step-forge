@@ -11,7 +11,6 @@ import {
   requireFromGiven,
   requireFromThen,
   requireFromWhen,
-  typeCoercer,
 } from "./utils";
 import { MergeableWorld } from "./world";
 import { Parser, stringParser } from "./parsers";
@@ -78,12 +77,15 @@ export const addStep =
         const parsers = declaredParsers as unknown as Parser<any>[] ?? Array.from({ length: argCount }, () => stringParser) as Parser<any>[]; 
         const argMatchers = Array.from({ length: argCount }, (_, i) => parsers[i].gherkin);
         const statement = statementFunction(...argMatchers);
+
         const cucStepFunction = Object.defineProperty(
           async function (
             this: MergeableWorld<GivenState, WhenState, ThenState>,
             ...args: string[]
           ) {
-            const coercedArgs = args.map(typeCoercer);
+            const coercedArgs = args
+              .filter(arg => typeof arg !== 'function')
+              .map((arg, index) => parsers[index].parse(arg));
             const requiredGivenKeys = Object.entries(givenDependencies ?? {})
               .filter(([, value]) => value === "required")
               .map(([key]) => key);

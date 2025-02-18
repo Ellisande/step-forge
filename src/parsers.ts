@@ -15,13 +15,13 @@ export const intParser: Parser<number> = {
 
 export const numberParser: Parser<number> = {
   parse: (value: string) => parseFloat(value),
-  gherkin: "{number}",
+  gherkin: "{double}",
 };
 
 
 export const booleanParser: Parser<boolean> = {
   parse: (value: string) => value === "true",
-  gherkin: "{boolean}",
+  gherkin: "{string}",
 };
 
 

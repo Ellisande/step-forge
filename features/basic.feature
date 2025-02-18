@@ -20,7 +20,12 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
         When I name the user "John"
         Then the user's name is "John"
 
-    Scenario: Basic feature steps number types can be run as a cucumber scenario
+    Scenario: Basic feature steps int types can be run as a cucumber scenario
         Given a user
         When I set the user's age to 25
         Then the user's age is 25
+
+    Scenario: Basic feature steps number types can be run as a cucumber scenario
+        Given a user
+        When I set the user's balance to 3.55
+        Then the user's balance is 3.55

@@ -9,6 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const whenDependencies =
   <
@@ -17,9 +18,13 @@ const whenDependencies =
     Variables,
     GivenState,
     WhenState,
+    Parsers extends { [K in keyof Variables]: Parser<any> } = {
+      [K in keyof Variables]: Parser<string>
+    }
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parsers
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -63,8 +68,32 @@ const whenDependencies =
         never,
         RestrictedGivenState,
         RestrictedWhenState,
-        never
-      >(statement, stepType, fullDependencies),
+        never,
+        Parsers
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+const whenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables,
+    GivenState,
+    WhenState
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) => <Parsers extends { [K in keyof Variables]: Parser<any> }>(parsers: Parsers) => {
+    return {
+      dependencies: whenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState,
+        Parsers
+      >(statement, stepType, parsers),
     };
   };
 
@@ -107,6 +136,13 @@ const whenStatement =
     >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
+      parsers: whenParsers<
+        NormalizedStatement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState
+      >(normalizedStatement, stepType),
       step: stepFunc,
     };
   };
