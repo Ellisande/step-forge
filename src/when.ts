@@ -84,16 +84,32 @@ const whenParsers =
   >(
     statement: Statement,
     stepType: ResolvedStepType
-  ) => <Parsers extends { [K in keyof Variables]: Parser<any> }>(parsers: Parsers) => {
+  ) => <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(parsers: Parsers) => {
+    type ParserOutputTypes = {
+      [K in keyof Parsers]: Parsers[K] extends Parser<infer T> ? T : never;
+    };
     return {
       dependencies: whenDependencies<
         Statement,
         ResolvedStepType,
-        Variables,
+        ParserOutputTypes,
         GivenState,
         WhenState,
         Parsers
       >(statement, stepType, parsers),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        ParserOutputTypes,
+        GivenState,
+        WhenState,
+        never,
+        never,
+        never,
+        never,
+        Parsers
+      >(statement, stepType, undefined, parsers),
     };
   };
 
@@ -115,18 +131,28 @@ const whenStatement =
     type NormalizedStatement = typeof normalizedStatement;
 
     type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
+    type StringifiedTuple<T extends any[]> = { [I in keyof T]: string };
+    type StringifiedVariables = StringifiedTuple<Variables>;
+    
     const dependencyFunc = whenDependencies<
+      NormalizedStatement,
+      ResolvedStepType,
+      StringifiedVariables,
+      GivenState,
+      WhenState
+    >(normalizedStatement, stepType);
+    const parsersFunc = whenParsers<
       NormalizedStatement,
       ResolvedStepType,
       Variables,
       GivenState,
       WhenState
-    >(normalizedStatement, stepType);
+    >(normalizedStatement, stepType); 
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
       EmptyDependencies,
-      Variables,
+      StringifiedVariables,
       GivenState,
       WhenState,
       never,
@@ -136,13 +162,7 @@ const whenStatement =
     >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
-      parsers: whenParsers<
-        NormalizedStatement,
-        ResolvedStepType,
-        Variables,
-        GivenState,
-        WhenState
-      >(normalizedStatement, stepType),
+      parsers: parsersFunc,
       step: stepFunc,
     };
   };
