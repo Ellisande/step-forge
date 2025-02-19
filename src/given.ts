@@ -85,6 +85,19 @@ const givenParsers =
         GivenState,
         Parsers
       >(statement, stepType, parsers),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        ParserOutputTypes,
+        GivenState,
+        never,
+        never,
+        never,
+        never,
+        never,
+        Parsers
+      >(statement, stepType, undefined, parsers),
     };
   };
 
