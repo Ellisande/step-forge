@@ -61,6 +61,7 @@ const givenDependencies =
     };
   };
 
+  // TODO: Needs to optionally chain to step, not be required to go through dependencies
 const givenParsers =
   <
     Statement extends (...args: any[]) => string,
@@ -70,13 +71,17 @@ const givenParsers =
   >(
     statement: Statement,
     stepType: ResolvedStepType
-  ) => <Parsers extends { [K in keyof Variables]: Parser<any> }>
+  ) => <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }> // [string, int, boolean] => [Parser<string>, Parser<int>, Parser<boolean>] => [string, int, boolean]
   (parsers: Parsers) => {
+    // Can't use a utility type here because it needs information on the exact length of the tuple, and its typing
+    type ParserOutputTypes = {
+      [K in keyof Parsers]: Parsers[K] extends Parser<infer T> ? T : never;
+    };
     return {
       dependencies: givenDependencies<
         Statement,
         ResolvedStepType,
-        Variables,
+        ParserOutputTypes,
         GivenState,
         Parsers
       >(statement, stepType, parsers),
@@ -99,12 +104,16 @@ const givenStatement =
     type NormalizedStatement = typeof normalizedStatement;
 
     type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
+    type StringifiedTuple<T extends any[]> = { [I in keyof T]: string };
+    type StringifiedVariables = StringifiedTuple<Variables>;
+
     const dependencyFunc = givenDependencies<
       NormalizedStatement,
       ResolvedStepType,
-      Variables,
+      StringifiedVariables,
       GivenState
     >(normalizedStatement, stepType);
+
     
     return {
       dependencies: dependencyFunc,
@@ -118,7 +127,7 @@ const givenStatement =
         ResolvedStepType,
         NormalizedStatement,
         EmptyDependencies,
-        Variables,
+        StringifiedVariables,
         GivenState,
         never,
         never,

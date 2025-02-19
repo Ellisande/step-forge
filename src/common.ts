@@ -77,6 +77,9 @@ export const addStep =
         const parsers = declaredParsers as unknown as Parser<any>[] ?? Array.from({ length: argCount }, () => stringParser) as Parser<any>[]; 
         const argMatchers = Array.from({ length: argCount }, (_, i) => parsers[i].gherkin);
         const statement = statementFunction(...argMatchers);
+        // Useful for debugging, but until we add a legit logger, it's just noise
+        // console.debug(`${stepType}('${statement}', function (${argMatchers.map((_, index) => `arg${index}`).join(', ')}) {})`);
+
 
         const cucStepFunction = Object.defineProperty(
           async function (

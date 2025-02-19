@@ -24,4 +24,3 @@ export const booleanParser: Parser<boolean> = {
   gherkin: "{string}",
 };
 
-
