@@ -9,6 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const givenDependencies =
   <
@@ -16,9 +17,13 @@ const givenDependencies =
     ResolvedStepType extends StepType,
     Variables,
     GivenState,
+    Parsers extends { [K in keyof Variables]: Parser<any> } = {
+      [K in keyof Variables]: Parser<string>
+    }
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parsers
   ) =>
   <GivenDeps extends RequiredOrOptional<GivenState>>(dependencies: {
     given: GivenDeps;
@@ -46,12 +51,53 @@ const givenDependencies =
         Dependencies,
         Variables,
         GivenState,
-        never, // when state
-        never, // then state
+        never,
+        never,
         RestrictedGivenState,
-        never, // restricted when state
-        never // restricted then state
-      >(statement, stepType, fullDependencies),
+        never,
+        never,
+        Parsers
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+  // TODO: Needs to optionally chain to step, not be required to go through dependencies
+const givenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables,
+    GivenState
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) => <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }> // [string, int, boolean] => [Parser<string>, Parser<int>, Parser<boolean>] => [string, int, boolean]
+  (parsers: Parsers) => {
+    // Can't use a utility type here because it needs information on the exact length of the tuple, and its typing
+    type ParserOutputTypes = {
+      [K in keyof Parsers]: Parsers[K] extends Parser<infer T> ? T : never;
+    };
+    return {
+      dependencies: givenDependencies<
+        Statement,
+        ResolvedStepType,
+        ParserOutputTypes,
+        GivenState,
+        Parsers
+      >(statement, stepType, parsers),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        ParserOutputTypes,
+        GivenState,
+        never,
+        never,
+        never,
+        never,
+        never,
+        Parsers
+      >(statement, stepType, undefined, parsers),
     };
   };
 
@@ -71,27 +117,37 @@ const givenStatement =
     type NormalizedStatement = typeof normalizedStatement;
 
     type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
+    type StringifiedTuple<T extends any[]> = { [I in keyof T]: string };
+    type StringifiedVariables = StringifiedTuple<Variables>;
+
     const dependencyFunc = givenDependencies<
       NormalizedStatement,
       ResolvedStepType,
-      Variables,
+      StringifiedVariables,
       GivenState
     >(normalizedStatement, stepType);
-    const stepFunc = addStep<
-      ResolvedStepType,
-      NormalizedStatement,
-      EmptyDependencies,
-      Variables,
-      GivenState,
-      never,
-      never,
-      never,
-      never,
-      never
-    >(normalizedStatement, stepType);
+
+    
     return {
       dependencies: dependencyFunc,
-      step: stepFunc,
+      parsers: givenParsers<
+        NormalizedStatement,
+        ResolvedStepType,
+        Variables,
+        GivenState
+      >(normalizedStatement, stepType),
+      step: addStep<
+        ResolvedStepType,
+        NormalizedStatement,
+        EmptyDependencies,
+        StringifiedVariables,
+        GivenState,
+        never,
+        never,
+        never,
+        never,
+        never
+      >(normalizedStatement, stepType),
     };
   };
 

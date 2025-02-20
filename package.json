@@ -1,23 +1,27 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.6",
-  "module": "./dist/step-forge.js",
+  "version": "0.0.7",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/step-forge.js"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/step-forge.js",
+      "require": "./dist/step-forge.cjs"
     },
-    "./dist/": {
-      "import": "./dist/"
-    }
+    "./package.json": "./package.json"
   },
-  "types": "./dist/index.d.ts",
+  "main": "./dist/step-forge.cjs",
+  "module": "./dist/step-forge.js",
+  "types": "./dist/types/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite --host",
-    "build": "rimraf build/**/* && rimraf dist/**/* && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles -u 1 \"dist/**/*\" \"package.json\" build",
+    "build": "rimraf dist && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.cjs",
     "test:cucumber": "NODE_ENV=test NODE_OPTIONS=\"--experimental-specifier-resolution=node --loader ts-node/esm\" TS_NODE_PROJECT=./tsconfig.cucumber.json cucumber-js -p default",
     "test:ci": "NODE_ENV=test cucumber-js -p ci",
-    "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none cucumber-js -p all 2> /dev/null",
+    "test": "NODE_ENV=test NODE_OPTIONS=\"--experimental-specifier-resolution=node --loader ts-node/esm\" TS_NODE_PROJECT=./tsconfig.cucumber.json cucumber-js -p default 2> /dev/null",
     "test:debug": "NODE_ENV=test PORT=7888 cucumber-js -p all",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"

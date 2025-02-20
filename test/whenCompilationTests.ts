@@ -1,3 +1,5 @@
+import { intParser } from "../src/parsers";
+import { stringParser } from "../src/parsers";
 import { whenBuilder } from "../src/when";
 import { SampleGivenState, SampleWhenState } from "./testUtils";
 
@@ -63,6 +65,41 @@ whenBuilder<SampleGivenState, SampleWhenState>()
   .step(({ variables: [v1, v2], given: { a, b }, when: { d, e } }) => {
     return {
       e: `Action ${v1} ${v2} with ${a} ${b} ${d} ${e}`,
+    };
+  });
+
+// Parsers example
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  .parsers([stringParser, intParser])
+  .dependencies({
+    given: { a: "required", b: "optional" },
+    when: { d: "required", e: "optional" },
+  })
+  .step(({ variables: [v1, v2], given: { a, b }, when: { d, e } }) => {
+    return {
+      e: `Action ${v1} ${v2} with ${a} ${b} ${d} ${e}`,
+    };
+  });
+
+// Dependencies are optional from parsers example
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  .parsers([stringParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      e: `Action ${v1} ${v2}`,
+    };
+  });
+
+// Without parsers all variables are strings in the step function
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  .step(({ variables: [v1, v2] }) => {
+    const a: string = v1;
+    const b: string = v2;
+    return {
+      e: `Action ${a} ${b}`,
     };
   });
 
@@ -153,5 +190,46 @@ whenBuilder<SampleGivenState, SampleWhenState>()
   .step(() => {
     return {
       a: "hello",
+    };
+  });
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number, v3: boolean) => `When a user does ${v1} ${v2}`)
+  // @ts-expect-error - Should not compile since the number of parsers does not match the number of variables
+  .parsers([stringParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      e: `Action ${v1} ${v2}`,
+    };
+  });
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  // @ts-expect-error - Should not compile there are more parsers than variables
+  .parsers([stringParser, intParser, booleanParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      e: `Action ${v1} ${v2}`,
+    };
+  });
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  // @ts-expect-error - Should not compile since the type of parsers does not match the arguments to statement
+  .parsers([numberParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      e: `Action ${v1} ${v2}`,
+    };
+  });
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  .step(({ variables: [v1, v2] }) => {
+    const a: string = v1;
+    // @ts-expect-error - Should not compile because without parsers all variables are strings
+    const b: number = v2;
+    return {
+      e: `Action ${v1} ${v2}`,
     };
   });
