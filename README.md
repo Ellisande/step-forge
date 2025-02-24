@@ -2,14 +2,16 @@
 
 Step Forge is a typed wrapper around the Cucumber library. It provides an opinionated way to define steps, work with scenario state, and enforce dependencies between steps.
 
+This is just a primer, see the [official documentation site](https://step-forge.com) for more information.
+
 ## Installation
 
 ```bash
 npm install @step-forge/step-forge
 ```
 
-
 ## Getting Started
+
 ### Setting Up World State
 
 ```ts
@@ -53,6 +55,7 @@ givenBuilder<GivenState>()
 ```
 
 This creates a cucumber step that conceptually looks like this:
+
 ```ts
 Given("a user", function (this: World) {
   this.given.merge({
@@ -77,7 +80,7 @@ type GivenState = {
 
 givenBuilder<GivenState>()
   .statement((userName: string) => `a user named ${userName}`)
-  .step(({ variables: [ userName ] }) => {
+  .step(({ variables: [userName] }) => {
     return {
       user: userName,
     };
@@ -90,6 +93,7 @@ Here you can see that you can pass a template function to the statement that wil
 > Note: Right now only `string` variables are supported, but we're working to improve this.
 
 This creates a cucumber step that conceptually looks like this:
+
 ```ts
 Given("a user named {name}", function (this: World, name: string) {
   this.given.merge({
@@ -111,15 +115,15 @@ type GivenState = {
   user: {
     name: string;
     realName: string;
-  }
+  };
 };
 
 givenBuilder<GivenState>()
   .statement((userName: string) => `a user named ${userName}`)
   // Since this is a given step, only allow dependencies on given state
   // Strongly typed to ensure you can't depend on something not in given state
-  .dependencies({ given: { realName: "required"}})
-  .step(({ variables: [ userName ], given: { realName } }) => {
+  .dependencies({ given: { realName: "required" } })
+  .step(({ variables: [userName], given: { realName } }) => {
     return {
       user: {
         name: userName,
@@ -134,6 +138,7 @@ givenBuilder<GivenState>()
 Now this is getting more interesting. We've added a dependency on the `realName` part of given state. Step Forge strongly types dependencies based on your world state, and properly restricts access based on the step type. Additionally, since `realName` is required Step Forge will fail the scenario if it doesn't exist when the step is run.
 
 This creates a cucumber step that conceptually looks like this:
+
 ```ts
 Given("a user named {name}", function (this: World, name: string) {
   if (!this.given.realName) {
@@ -174,33 +179,37 @@ type GivenState = {
   user: {
     name: string;
     realName: string;
-  }
-}
+  };
+};
 
 type WhenState = {
   user: {
     name: string;
     realName: string;
-  }
-}
+  };
+};
 
-type ThenState = {}
+type ThenState = {};
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("the user's real name should not change")
   .dependencies({
     given: { realName: "required" },
-    when: { user: "required" }
+    when: { user: "required" },
   })
-  .step(({ given: { realName: expectedRealName }, when: { user: updatedUser } }) => {
-    expect(updatedUser.realName).toEqual(expectedRealName);
-    // Then steps can return void if they are not adding anything to `then` state
-  })
+  .step(
+    ({
+      given: { realName: expectedRealName },
+      when: { user: updatedUser },
+    }) => {
+      expect(updatedUser.realName).toEqual(expectedRealName);
+      // Then steps can return void if they are not adding anything to `then` state
+    }
+  )
   .register();
 ```
 
 Even though we have complex dependencies across multiple parts of state, Step Forge ensures that the dependencies are properly enforced. It also provides type safety ensuring that the step can't depend on something from state that isn't explicitly declared.
-
 
 ### Simpler Step Definitions
 
@@ -224,15 +233,15 @@ import { Given } from "./common";
 
 // You can now start your definition with the statement directly, without having to provide GivenState or chain through the builder.
 Given("a user")
-.dependencies({ given: { realName: "required" } })
-.step(({ given: { realName } }) => {
-  return {
-    user: {
-      realName,
-    },
-  };
-})
-.register();
+  .dependencies({ given: { realName: "required" } })
+  .step(({ given: { realName } }) => {
+    return {
+      user: {
+        realName,
+      },
+    };
+  })
+  .register();
 ```
 
 ### Compile Time Gherkin Analysis
@@ -251,21 +260,21 @@ type GivenState = {
   name: string;
   user: {
     name: string;
-  }
-}
+  };
+};
 
 Given((name: string) => `a user named ${name}`)
-.step(({ variables: [ name ] }) => {
-  return { name }
-})
-.register();
+  .step(({ variables: [name] }) => {
+    return { name };
+  })
+  .register();
 
 When("I save the user")
-.dependencies({ given: { user: "required" } })
-.step(({ given: { user } }) => {
-  // save the user
-})
-.register();
+  .dependencies({ given: { user: "required" } })
+  .step(({ given: { user } }) => {
+    // save the user
+  })
+  .register();
 ```
 
 ```gherkin
@@ -284,6 +293,3 @@ Feature: Updating a user's username
 Additionally when adding a step to a feature file, if the step has unfulfilled dependencies, the extension will show a list of steps that can be used to fulfill the dependencies.
 
 ![Step Forge Autocomplete Demo](./docs/assets/state_deps.gif)
-
-
-
