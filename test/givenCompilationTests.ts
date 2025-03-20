@@ -1,4 +1,6 @@
 import { givenBuilder } from "../src/given";
+import { stringParser } from "../src/parsers";
+import { intParser } from "../src/parsers";
 import { SampleGivenState } from "./testUtils";
 
 // Simplest possible example
@@ -48,6 +50,39 @@ givenBuilder<SampleGivenState>()
       b: `I love ${v1} ${v2} ${a} ${b} ${c}`,
     };
   });
+
+// Parsers example
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .parsers([stringParser, intParser])
+  .dependencies({ given: { a: "required", b: "optional", c: "required" } })
+  .step(({ variables: [v1, v2], given: { a, b, c } }) => {
+    return {
+      b: `I love ${v1} ${v2} ${a} ${b} ${c}`,
+    };
+  });
+
+// Dependencies are optional from parsers example
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .parsers([stringParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
+
+// Without parsers all variables are strings in the step function
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .step(({ variables: [v1, v2] }) => {
+    const a: string = v1;
+    const b: string = v2;
+    return {
+      b: `I love ${a} ${b}`,
+    };
+  });
+
 
 // ----- Should not compile section ----
 
@@ -126,5 +161,46 @@ givenBuilder<SampleGivenState>()
   .step(() => {
     return {
       f: "hello",
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number, v3: boolean) => `Given a user ${v1} ${v2}`)
+  // @ts-expect-error - Should not compile since the number of parsers does not match the number of variables
+  .parsers([stringParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  // @ts-expect-error - Should not compile there are more parsers than variables
+  .parsers([stringParser, intParser, booleanParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  // @ts-expect-error - Should not compile since the type of parsers does not match the arguments to statement
+  .parsers([numberParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .step(({ variables: [v1, v2] }) => {
+    const a: string = v1;
+    // @ts-expect-error - Should not compile because without parsers all variables are strings
+    const b: number = v2;
+    return {
+      b: `I love ${v1} ${v2}`,
     };
   });
