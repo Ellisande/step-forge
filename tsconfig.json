@@ -15,11 +15,12 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "noEmit": false,
+    "emitDeclarationOnly": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["vite/client", "node"],
+    "types": ["node"],
     "declaration": true,
     "declarationDir": "./dist/types"
   },
