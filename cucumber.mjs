@@ -6,6 +6,10 @@ const defaultProfile = {
     "usage:./reports/cucumber/usage.txt",
   ],
   parallel: 1,
+  paths: [
+    "./features/*.feature",
+    "./features/analyzer/*.feature",
+  ],
   import: [
     "./features/steps/**/*.ts",
     "./features/steps/*.ts",
@@ -29,7 +33,6 @@ const ciProfile = {
 
 const all = {
   ...defaultProfile,
-  paths: ["./features"],
 };
 
 export { ciProfile as ci, all };
