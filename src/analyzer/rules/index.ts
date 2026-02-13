@@ -5,8 +5,9 @@ import {
   ParsedScenario,
 } from "../types.js";
 import { dependencyRule } from "./dependencyRule.js";
+import { undefinedStepRule } from "./undefinedStepRule.js";
 
-export const defaultRules: AnalysisRule[] = [dependencyRule];
+export const defaultRules: AnalysisRule[] = [undefinedStepRule, dependencyRule];
 
 export function runRules(
   rules: AnalysisRule[],

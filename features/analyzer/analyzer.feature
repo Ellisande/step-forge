@@ -30,21 +30,45 @@ Feature: Analyzer dependency verification
     When I analyze the files
     Then there should be no errors
 
+  # --- Undefined step scenarios ---
+
+  Scenario: Undefined step reports an error
+    Given a feature file "undefined-step.feature"
+    When I analyze the files
+    Then there should be 1 error
+    And there is 1 error for rule "undefined-step"
+    And an error should mention "I do something that does not exist"
+    And an error should mention "does not match any step definition"
+
+  Scenario: Undefined step combined with missing dependency
+    Given a feature file "undefined-with-missing-dep.feature"
+    When I analyze the files
+    Then there should be 2 errors
+    And there is 1 error for rule "undefined-step"
+    And an error should mention "I do something that does not exist"
+    And there is 1 error for rule "dependency-check"
+    And an error should mention "given.user"
+
   # --- Failing scenarios ---
 
   Scenario: Missing required given dependency reports an error
     Given a feature file "missing-given-dep.feature"
     When I analyze the files
-    Then there should be 1 errors
+    Then there should be 1 error
+    And there is 1 error for rule "dependency-check"
     And an error should mention "given.user"
 
   Scenario: Missing required when dependency reports an error
     Given a feature file "missing-when-dep.feature"
     When I analyze the files
-    Then there should be 1 errors
+    Then there should be 1 error
+    And there is 1 error for rule "dependency-check"
     And an error should mention "when.user"
 
   Scenario: Multiple missing dependencies reports multiple errors
     Given a feature file "missing-multiple-deps.feature"
     When I analyze the files
     Then there should be 2 errors
+    And there are 2 errors for rule "dependency-check"
+    And an error should mention "given.user"
+    And an error should mention "given.account"
