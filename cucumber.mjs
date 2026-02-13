@@ -6,7 +6,6 @@ const defaultProfile = {
     "usage:./reports/cucumber/usage.txt",
   ],
   parallel: 1,
-  importModule: ["ts-node/esm", "tsconfig-paths/register"],
   import: [
     "./features/steps/**/*.ts",
     "./features/steps/*.ts",
@@ -23,7 +22,6 @@ const ciProfile = {
     "usage:./reports/cucumber/usage.txt",
   ],
   parallel: 1,
-  importModule: ["ts-node/register/transpile-only", "tsconfig-paths/register"],
   import: ["./features/steps/**/*.ts", "./features/steps/*.ts"],
   strict: false,
   publish: true,
