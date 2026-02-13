@@ -7,9 +7,15 @@
     ".": {
       "import": "./dist/step-forge.js"
     },
+    "./analyzer": {
+      "import": "./dist/analyzer.js"
+    },
     "./dist/": {
       "import": "./dist/"
     }
+  },
+  "bin": {
+    "step-forge-analyze": "./dist/analyzer-cli.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -38,8 +44,19 @@
     "rolldown": "^1.0.0-rc.3",
     "typescript": "^5.7.2"
   },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@cucumber/cucumber": "^12.6.0",
+    "@cucumber/cucumber-expressions": "^18.1.0",
+    "@cucumber/gherkin": "^37.0.1",
+    "@cucumber/messages": "^24.1.0",
     "lodash": "^4.17.21"
   }
 }
