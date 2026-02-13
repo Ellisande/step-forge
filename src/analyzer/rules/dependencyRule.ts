@@ -24,28 +24,40 @@ export const dependencyRule: AnalysisRule = {
 
       const { dependencies, produces, stepType } = step.definitions[0];
 
-      // Check required dependencies
+      // Collect all missing required dependencies for this step
+      const missing: Record<string, string[]> = {};
       for (const phase of ["given", "when", "then"] as const) {
         for (const [key, requirement] of Object.entries(dependencies[phase])) {
           if (requirement === "required" && !produced[phase].has(key)) {
-            const available = [...produced[phase]];
-            const availableStr =
-              available.length > 0 ? available.join(", ") : "(none)";
-            diagnostics.push({
-              file: scenario.file,
-              range: {
-                startLine: step.line,
-                startColumn: step.column,
-                endLine: step.line,
-                endColumn: step.column + step.text.length,
-              },
-              severity: "error",
-              message: `Step "${step.text}" requires '${phase}.${key}' but no preceding step produces it. Available ${phase} keys: ${availableStr}. Defined in: ${step.definitions[0].sourceFile}:${step.definitions[0].line}`,
-              rule: "dependency-check",
-              source: "step-forge",
-            });
+            if (!missing[phase]) {
+              missing[phase] = [];
+            }
+            missing[phase].push(key);
           }
         }
+      }
+
+      if (Object.keys(missing).length > 0) {
+        const lines = Object.entries(missing).map(
+          ([phase, keys]) =>
+            `${phase.charAt(0).toUpperCase() + phase.slice(1)}: ${keys.map((k) => `${phase}.${k}`).join(", ")}`
+        );
+        const message =
+          "Missing required dependencies:\n" + lines.join("\n");
+
+        diagnostics.push({
+          file: scenario.file,
+          range: {
+            startLine: step.line,
+            startColumn: step.column,
+            endLine: step.line,
+            endColumn: step.column + step.text.length,
+          },
+          severity: "error",
+          message,
+          rule: "dependency-check",
+          source: "step-forge",
+        });
       }
 
       // Add produced keys for this step

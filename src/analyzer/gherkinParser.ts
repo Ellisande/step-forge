@@ -17,7 +17,7 @@ export function parseFeatureFiles(filePaths: string[]): ParsedScenario[] {
   return scenarios;
 }
 
-function parseFeatureContent(
+export function parseFeatureContent(
   content: string,
   filePath: string
 ): ParsedScenario[] {

@@ -1,5 +1,15 @@
 import { defineConfig } from "rolldown";
 
+const allExternal = [
+  "@cucumber/cucumber",
+  "@cucumber/gherkin",
+  "@cucumber/messages",
+  "@cucumber/cucumber-expressions",
+  "lodash",
+  "typescript",
+  /^node:/,
+];
+
 export default defineConfig([
   {
     input: "./src/index.ts",
@@ -8,7 +18,16 @@ export default defineConfig([
       format: "esm",
       sourcemap: true,
     },
-    external: ["@cucumber/cucumber", "lodash"],
+    external: allExternal,
+  },
+  {
+    input: "./src/index.ts",
+    output: {
+      file: "./build/dist/step-forge.cjs",
+      format: "cjs",
+      sourcemap: true,
+    },
+    external: allExternal,
   },
   {
     input: {
@@ -21,14 +40,6 @@ export default defineConfig([
       sourcemap: true,
       entryFileNames: "[name].js",
     },
-    external: [
-      "@cucumber/cucumber",
-      "@cucumber/gherkin",
-      "@cucumber/messages",
-      "@cucumber/cucumber-expressions",
-      "lodash",
-      "typescript",
-      /^node:/,
-    ],
+    external: allExternal,
   },
 ]);

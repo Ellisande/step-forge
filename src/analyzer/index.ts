@@ -1,8 +1,11 @@
 import { glob } from "node:fs/promises";
 import * as path from "node:path";
 import { extractStepDefinitions } from "./stepExtractor.js";
-import { parseFeatureFiles } from "./gherkinParser.js";
-import { matchScenarioSteps } from "./stepMatcher.js";
+import { parseFeatureFiles, parseFeatureContent } from "./gherkinParser.js";
+import {
+  matchScenarioSteps,
+  findMatchingDefinitions,
+} from "./stepMatcher.js";
 import { defaultRules, runRules } from "./rules/index.js";
 import type {
   AnalyzerConfig,
@@ -22,6 +25,15 @@ export type {
   ParsedScenario,
   MatchedStep,
   ParsedStep,
+};
+
+export {
+  extractStepDefinitions,
+  parseFeatureFiles,
+  parseFeatureContent,
+  matchScenarioSteps,
+  findMatchingDefinitions,
+  defaultRules,
 };
 
 export interface AnalyzeOptions {
