@@ -1,13 +1,21 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.6",
+  "version": "0.0.8",
   "module": "./dist/step-forge.js",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/step-forge.js"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/step-forge.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/step-forge.js"
+      }
     },
     "./analyzer": {
+      "types": "./dist/analyzer.d.ts",
       "import": "./dist/analyzer.js"
     },
     "./dist/": {
@@ -19,7 +27,7 @@
   },
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "rm -rf build && tsc && rolldown -c && dts-bundle-generator --config ./dts-bundle-generator.config.cjs && cp package.json build/",
+    "build": "rm -rf build && tsc && rolldown -c && dts-bundle-generator --config ./dts-bundle-generator.config.cjs && cp build/dist/index.d.ts build/dist/index.d.cts && cp package.json build/",
     "test:cucumber": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p default",
     "test:ci": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p ci",
     "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none NODE_OPTIONS='--import tsx' cucumber-js -p all 2> /dev/null",
