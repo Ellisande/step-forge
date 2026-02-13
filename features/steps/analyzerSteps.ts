@@ -41,3 +41,13 @@ Then("an error should mention {string}", function (substring: string) {
   const found = errors.some((e) => e.message.includes(substring));
   expect(found).toEqual(true);
 });
+
+Then(
+  "there is/are {int} error/errors for rule {string}",
+  function (count: number, rule: string) {
+    const errors = diagnostics.filter(
+      (d) => d.severity === "error" && d.rule === rule
+    );
+    expect(errors).toHaveLength(count);
+  }
+);

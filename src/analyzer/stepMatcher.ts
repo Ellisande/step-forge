@@ -26,19 +26,19 @@ export function matchScenarioSteps(
   }
 
   return scenario.steps.map((step) => {
-    const match = findMatch(step.text, step.effectiveKeyword, compiled);
+    const matches = findMatches(step.text, step.effectiveKeyword, compiled);
     return {
       ...step,
-      definition: match,
+      definitions: matches,
     };
   });
 }
 
-function findMatch(
+function findMatches(
   text: string,
   effectiveKeyword: "Given" | "When" | "Then",
   compiled: CompiledExpression[]
-): StepDefinitionMeta | null {
+): StepDefinitionMeta[] {
   const keywordToStepType: Record<string, string> = {
     Given: "given",
     When: "when",
@@ -47,17 +47,21 @@ function findMatch(
   const expectedStepType = keywordToStepType[effectiveKeyword];
 
   // First try to match with the correct step type
+  const typedMatches: StepDefinitionMeta[] = [];
   for (const { expression, definition } of compiled) {
     if (definition.stepType !== expectedStepType) continue;
     const result = expression.match(text);
-    if (result) return definition;
+    if (result) typedMatches.push(definition);
   }
+
+  if (typedMatches.length > 0) return typedMatches;
 
   // Fallback: match any step type (Cucumber itself doesn't enforce keyword-to-step-type)
+  const fallbackMatches: StepDefinitionMeta[] = [];
   for (const { expression, definition } of compiled) {
     const result = expression.match(text);
-    if (result) return definition;
+    if (result) fallbackMatches.push(definition);
   }
 
-  return null;
+  return fallbackMatches;
 }

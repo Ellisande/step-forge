@@ -58,6 +58,18 @@ givenBuilder<GivenState>()
   })
   .register();
 
+// --- Ambiguous steps (same expression, two definitions) --- //
+
+givenBuilder<GivenState>()
+  .statement("the system is ready")
+  .step(() => ({}))
+  .register();
+
+givenBuilder<GivenState>()
+  .statement("the system is ready")
+  .step(() => ({}))
+  .register();
+
 // --- When steps with dependencies --- //
 
 whenBuilder<GivenState, WhenState>()

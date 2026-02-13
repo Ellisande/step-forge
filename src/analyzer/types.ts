@@ -26,7 +26,7 @@ export interface ParsedStep {
 }
 
 export interface MatchedStep extends ParsedStep {
-  definition: StepDefinitionMeta | null;
+  definitions: StepDefinitionMeta[];
 }
 
 export interface Diagnostic {
