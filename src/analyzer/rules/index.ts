@@ -4,10 +4,15 @@ import {
   MatchedStep,
   ParsedScenario,
 } from "../types.js";
+import { ambiguousStepRule } from "./ambiguousStepRule.js";
 import { dependencyRule } from "./dependencyRule.js";
 import { undefinedStepRule } from "./undefinedStepRule.js";
 
-export const defaultRules: AnalysisRule[] = [undefinedStepRule, dependencyRule];
+export const defaultRules: AnalysisRule[] = [
+  undefinedStepRule,
+  ambiguousStepRule,
+  dependencyRule,
+];
 
 export function runRules(
   rules: AnalysisRule[],

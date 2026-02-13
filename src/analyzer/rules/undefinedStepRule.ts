@@ -13,7 +13,7 @@ export const undefinedStepRule: AnalysisRule = {
     matchedSteps: MatchedStep[]
   ): Diagnostic[] {
     return matchedSteps
-      .filter((step) => step.definition === null)
+      .filter((step) => step.definitions.length === 0)
       .map((step) => ({
         file: scenario.file,
         range: {

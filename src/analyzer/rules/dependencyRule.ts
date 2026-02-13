@@ -20,9 +20,9 @@ export const dependencyRule: AnalysisRule = {
     };
 
     for (const step of matchedSteps) {
-      if (!step.definition) continue;
+      if (step.definitions.length !== 1) continue;
 
-      const { dependencies, produces, stepType } = step.definition;
+      const { dependencies, produces, stepType } = step.definitions[0];
 
       // Check required dependencies
       for (const phase of ["given", "when", "then"] as const) {
@@ -40,7 +40,7 @@ export const dependencyRule: AnalysisRule = {
                 endColumn: step.column + step.text.length,
               },
               severity: "error",
-              message: `Step "${step.text}" requires '${phase}.${key}' but no preceding step produces it. Available ${phase} keys: ${availableStr}. Defined in: ${step.definition.sourceFile}:${step.definition.line}`,
+              message: `Step "${step.text}" requires '${phase}.${key}' but no preceding step produces it. Available ${phase} keys: ${availableStr}. Defined in: ${step.definitions[0].sourceFile}:${step.definitions[0].line}`,
               rule: "dependency-check",
               source: "step-forge",
             });

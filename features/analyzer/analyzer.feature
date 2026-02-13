@@ -49,6 +49,15 @@ Feature: Analyzer dependency verification
     And there is 1 error for rule "dependency-check"
     And an error should mention "given.user"
 
+  # --- Ambiguous step scenarios ---
+
+  Scenario: Ambiguous step reports an error
+    Given a feature file "ambiguous-step.feature"
+    When I analyze the files
+    Then there should be 1 error
+    And there is 1 error for rule "ambiguous-step"
+    And an error should mention "matches multiple step definitions"
+
   # --- Failing scenarios ---
 
   Scenario: Missing required given dependency reports an error
