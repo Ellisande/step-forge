@@ -81,3 +81,30 @@ Feature: Analyzer dependency verification
     And there are 2 errors for rule "dependency-check"
     And an error should mention "given.user"
     And an error should mention "given.account"
+
+  # --- Diagnostic range scenarios ---
+
+  Scenario: Undefined step diagnostic range covers only the step text
+    Given a feature file "undefined-step.feature"
+    When I analyze the files
+    Then there should be 1 error
+    And the error on line 4 should span columns 10 to 44
+
+  Scenario: Ambiguous step diagnostic range covers only the step text
+    Given a feature file "ambiguous-step.feature"
+    When I analyze the files
+    Then there should be 1 error
+    And the error on line 3 should span columns 11 to 30
+
+  Scenario: Missing dependency diagnostic range covers only the step text
+    Given a feature file "missing-given-dep.feature"
+    When I analyze the files
+    Then there should be 1 error
+    And the error on line 4 should span columns 10 to 25
+
+  Scenario: Each diagnostic range is correct with multiple errors
+    Given a feature file "missing-multiple-deps.feature"
+    When I analyze the files
+    Then there should be 2 errors
+    And the error on line 4 should span columns 10 to 25
+    And the error on line 5 should span columns 10 to 30
