@@ -126,7 +126,11 @@ function convertSteps(
     keyword: normalizeKeyword(step.keyword),
     text: step.text,
     line: step.location.line,
-    column: step.location.column ?? 1,
+    // step.location.column points to the keyword start; shift past the
+    // keyword (which includes a trailing space) so column points to the
+    // start of the step text. This makes `column + text.length` produce
+    // the correct end position for diagnostic ranges.
+    column: (step.location.column ?? 1) + step.keyword.length,
   }));
 }
 

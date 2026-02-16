@@ -51,3 +51,17 @@ Then(
     expect(errors).toHaveLength(count);
   }
 );
+
+Then(
+  "the error on line {int} should span columns {int} to {int}",
+  function (line: number, startCol: number, endCol: number) {
+    const errors = diagnostics.filter(
+      (d) => d.severity === "error" && d.range.startLine === line
+    );
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const error = errors[0];
+    expect(error.range.startColumn).toEqual(startCol);
+    expect(error.range.endColumn).toEqual(endCol);
+    expect(error.range.endLine).toEqual(line);
+  }
+);
