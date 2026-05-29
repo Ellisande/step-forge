@@ -1,4 +1,4 @@
-import { buildHelpers } from "../src/init";
+import { createBuilders } from "../src/init";
 import {
   SampleGivenState,
   SampleWhenState,
@@ -7,7 +7,7 @@ import {
 
 // --- Build Helpers section ---
 
-const { Given, When, Then } = buildHelpers<
+const { Given, When, Then } = createBuilders<
   SampleGivenState,
   SampleWhenState,
   SampleThenState

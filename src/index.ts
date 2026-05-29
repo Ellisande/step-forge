@@ -28,6 +28,7 @@ import type {
   ParsedStep,
   MatchedStep,
 } from "./analyzer/index";
+import { createBuilders } from "./init";
 
 export {
   givenBuilder,
@@ -38,6 +39,7 @@ export {
   intParser,
   numberParser,
   booleanParser,
+  createBuilders,
 };
 
 export type { Parser };
