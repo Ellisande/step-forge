@@ -3,6 +3,13 @@ import { whenBuilder } from "./when";
 import { thenBuilder } from "./then";
 import { BasicWorld } from "./world";
 import {
+  stringParser,
+  intParser,
+  numberParser,
+  booleanParser,
+} from "./parsers";
+import type { Parser } from "./parsers";
+import {
   analyze,
   extractStepDefinitions,
   parseFeatureFiles,
@@ -22,7 +29,18 @@ import type {
   MatchedStep,
 } from "./analyzer/index";
 
-export { givenBuilder, whenBuilder, thenBuilder, BasicWorld };
+export {
+  givenBuilder,
+  whenBuilder,
+  thenBuilder,
+  BasicWorld,
+  stringParser,
+  intParser,
+  numberParser,
+  booleanParser,
+};
+
+export type { Parser };
 
 export const analyzer = {
   analyze,

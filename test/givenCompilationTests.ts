@@ -1,4 +1,5 @@
 import { givenBuilder } from "../src/given";
+import { intParser, stringParser } from "../src/parsers";
 import { SampleGivenState } from "./testUtils";
 
 // Simplest possible example
@@ -58,7 +59,49 @@ givenBuilder<SampleGivenState>()
     };
   });
 
+// Parsers example - variables keep their declared types and parsers must match
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .parsers([stringParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    const amount: number = v2;
+    return {
+      b: `I love ${v1} ${amount}`,
+    };
+  });
+
+// Parsers can chain into dependencies
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .parsers([stringParser, intParser])
+  .dependencies({ given: { a: "required" } })
+  .step(({ variables: [v1, v2], given: { a } }) => {
+    return {
+      b: `I love ${v1} ${v2} ${a}`,
+    };
+  });
+
 // ----- Should not compile section ----
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  // @ts-expect-error - intParser produces number but v1 is declared as a string
+  .parsers([intParser, intParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  // @ts-expect-error - too few parsers for the declared variables
+  .parsers([stringParser])
+  .step(({ variables: [v1, v2] }) => {
+    return {
+      b: `I love ${v1} ${v2}`,
+    };
+  });
 
 // @ts-expect-error - Should not compile without a statement
 givenBuilder<SampleGivenState>().step(() => {

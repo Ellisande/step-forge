@@ -9,6 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const whenDependencies =
   <
@@ -19,7 +20,8 @@ const whenDependencies =
     WhenState,
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parser<any>[]
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -64,7 +66,44 @@ const whenDependencies =
         RestrictedGivenState,
         RestrictedWhenState,
         never
-      >(statement, stepType, fullDependencies),
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+const whenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables extends any[],
+    GivenState,
+    WhenState,
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) =>
+  <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
+    parsers: Parsers
+  ) => {
+    return {
+      dependencies: whenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState
+      >(statement, stepType, parsers as unknown as Parser<any>[]),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        Variables,
+        GivenState,
+        WhenState,
+        never,
+        never,
+        never,
+        never
+      >(statement, stepType, undefined, parsers as unknown as Parser<any>[]),
     };
   };
 
@@ -93,6 +132,13 @@ const whenStatement =
       GivenState,
       WhenState
     >(normalizedStatement, stepType);
+    const parsersFunc = whenParsers<
+      NormalizedStatement,
+      ResolvedStepType,
+      Variables,
+      GivenState,
+      WhenState
+    >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
@@ -107,6 +153,7 @@ const whenStatement =
     >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
+      parsers: parsersFunc,
       step: stepFunc,
     };
   };

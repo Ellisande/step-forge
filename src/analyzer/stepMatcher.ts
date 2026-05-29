@@ -12,8 +12,8 @@ function compileDefinitions(
   for (const def of definitions) {
     try {
       // Replace {paramType} placeholders with (.+) to match any value,
-      // matching the Step Forge runtime behavior where all params use {string}
-      // and values are coerced at runtime via typeCoercer.
+      // regardless of which parser placeholder ({string}, {int}, ...) the
+      // step definition declared.
       const placeholder = "###PLACEHOLDER###";
       const regexStr = def.expression
         .replace(/\{[^}]+\}/g, placeholder)
@@ -36,7 +36,7 @@ export function matchScenarioSteps(
 ): MatchedStep[] {
   const compiled = compileDefinitions(definitions);
 
-  return scenario.steps.map((step) => {
+  return scenario.steps.map(step => {
     const matches = findMatches(step.text, step.effectiveKeyword, compiled);
     return {
       ...step,

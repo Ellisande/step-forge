@@ -7,12 +7,8 @@ import {
 import _ from "lodash";
 
 import { StepType } from "./builderTypeUtils";
-import {
-  requireFromGiven,
-  requireFromThen,
-  requireFromWhen,
-  typeCoercer,
-} from "./utils";
+import { Parser, stringParser } from "./parsers";
+import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
 import { MergeableWorld } from "./world";
 
 const cucFunctionMap = {
@@ -44,7 +40,8 @@ export const addStep =
       given: {},
       when: {},
       then: {},
-    } as Dependencies
+    } as Dependencies,
+    declaredParsers?: Parser<any>[]
   ) =>
   (
     stepFunction: (input: {
@@ -64,21 +61,32 @@ export const addStep =
       when: whenDependencies,
       then: thenDependencies,
     } = dependencies;
+    // Resolve the parsers up front, defaulting every variable to `stringParser`
+    // (the `{string}` placeholder, value passed through unchanged) when none are
+    // provided. Numeric/boolean values are opt-in via explicit parsers.
+    const argCount = statementFunction.length;
+    const parsers =
+      declaredParsers ?? Array.from({ length: argCount }, () => stringParser);
+    const expression = statementFunction(
+      ...parsers.map(parser => parser.gherkin)
+    );
     return {
       statement,
+      expression,
       dependencies,
       stepType,
       stepFunction,
       register: () => {
-        const argCount = statementFunction.length;
-        const argMatchers = Array.from({ length: argCount }, () => "{string}");
-        const statement = statementFunction(...argMatchers);
         const cucStepFunction = Object.defineProperty(
           async function (
             this: MergeableWorld<GivenState, WhenState, ThenState>,
             ...args: string[]
           ) {
-            const coercedArgs = args.map(typeCoercer);
+            // Iterate over parsers (not args) so Cucumber's trailing
+            // arguments don't get parsed as if they were captured variables.
+            const coercedArgs = parsers.map((parser, index) =>
+              parser.parse(args[index])
+            );
             const requiredGivenKeys = Object.entries(givenDependencies ?? {})
               .filter(([, value]) => value === "required")
               .map(([key]) => key);
@@ -126,9 +134,10 @@ export const addStep =
           { value: argCount, configurable: true }
         );
         const cucStep = cucFunctionMap[stepType];
-        cucStep(statement, cucStepFunction);
+        cucStep(expression, cucStepFunction);
         return {
           stepType,
+          expression,
           dependencies,
           statement: statementFunction,
           stepFunction,
