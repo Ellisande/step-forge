@@ -19,3 +19,8 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
         Given a user
         When I name the user "John"
         Then the user's name is "John"
+
+    Scenario: Feature steps with unquoted number variables can be run as a cucumber scenario
+        Given a user
+        When I deposit 100 "USD"
+        Then the deposit amount is 100

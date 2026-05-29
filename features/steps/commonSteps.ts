@@ -1,6 +1,7 @@
 import { givenBuilder } from "../../src/given";
 import { whenBuilder } from "../../src/when";
 import { thenBuilder } from "../../src/then";
+import { intParser, stringParser } from "../../src/parsers";
 import { GivenState, ThenState, WhenState } from "./world";
 import { expect } from "earl";
 
@@ -89,5 +90,34 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ when: { user }, variables: [userName] }) => {
     const token = user.token;
     expect(token).toEqual(userName);
+  })
+  .register();
+
+// --- Unquoted number variables (parsers) --- //
+
+whenBuilder<GivenState, WhenState>()
+  .statement(
+    (amount: number, currency: string) => `I deposit ${amount} ${currency}`
+  )
+  .parsers([intParser, stringParser])
+  .dependencies({ given: { user: "required" } })
+  .step(({ variables: [amount, currency], given: { user } }) => {
+    return {
+      deposit: {
+        amount,
+        currency,
+        user,
+      },
+    };
+  })
+  .register();
+
+thenBuilder<GivenState, WhenState, ThenState>()
+  .statement((amount: number) => `the deposit amount is ${amount}`)
+  .parsers([intParser])
+  .dependencies({ when: { deposit: "required" } })
+  .step(({ variables: [amount], when: { deposit } }) => {
+    expect(deposit.amount).toEqual(amount);
+    expect(typeof deposit.amount).toEqual("number");
   })
   .register();

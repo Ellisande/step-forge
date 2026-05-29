@@ -1,6 +1,6 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.14",
+  "version": "0.0.16",
   "module": "./dist/step-forge.js",
   "type": "module",
   "exports": {

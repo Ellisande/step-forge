@@ -8,6 +8,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
+import { Parser } from "./parsers";
 
 const thenDependencies =
   <
@@ -19,7 +20,8 @@ const thenDependencies =
     ThenState,
   >(
     statement: Statement,
-    stepType: ResolvedStepType
+    stepType: ResolvedStepType,
+    parsers?: Parser<any>[]
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -73,7 +75,46 @@ const thenDependencies =
         RestrictedGivenState,
         RestrictedWhenState,
         RestrictedThenState
-      >(statement, stepType, fullDependencies),
+      >(statement, stepType, fullDependencies, parsers),
+    };
+  };
+
+const thenParsers =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables extends any[],
+    GivenState,
+    WhenState,
+    ThenState,
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType
+  ) =>
+  <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
+    parsers: Parsers
+  ) => {
+    return {
+      dependencies: thenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState,
+        ThenState
+      >(statement, stepType, parsers as unknown as Parser<any>[]),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        Variables,
+        GivenState,
+        WhenState,
+        ThenState,
+        never,
+        never,
+        never
+      >(statement, stepType, undefined, parsers as unknown as Parser<any>[]),
     };
   };
 
@@ -103,6 +144,14 @@ const thenStatement =
       WhenState,
       ThenState
     >(normalizedStatement, stepType);
+    const parsersFunc = thenParsers<
+      NormalizedStatement,
+      ResolvedStepType,
+      Variables,
+      GivenState,
+      WhenState,
+      ThenState
+    >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
@@ -117,6 +166,7 @@ const thenStatement =
     >(normalizedStatement, stepType);
     return {
       dependencies: dependencyFunc,
+      parsers: parsersFunc,
       step: stepFunc,
     };
   };
