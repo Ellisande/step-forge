@@ -41,6 +41,7 @@ export {
 };
 
 export type { Parser };
+export type { StateFromDependencies } from "./typeHelpers";
 
 export const analyzer = {
   analyze,
