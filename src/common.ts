@@ -53,10 +53,10 @@ export const addStep =
       when: RestrictedWhenState;
       then: RestrictedThenState;
     }) => ResolvedStepType extends "given"
-      ? Partial<GivenState>
+      ? Partial<GivenState> | Promise<Partial<GivenState>>
       : ResolvedStepType extends "when"
-        ? Partial<WhenState>
-        : Partial<ThenState> | void
+        ? Partial<WhenState> | Promise<Partial<WhenState>>
+        : Partial<ThenState> | Promise<Partial<ThenState>> | void
   ) => {
     const statementFunction = statement;
     const {

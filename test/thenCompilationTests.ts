@@ -14,6 +14,15 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
     };
   });
 
+// Simple promise example
+thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
+  .statement("Then we should see something")
+  .step(async () => {
+    return {
+      i: { j: "result" },
+    };
+  });
+
 // Simple dependency on given state example
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
   .statement("Then we should see something")

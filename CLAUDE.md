@@ -9,7 +9,7 @@ npm test                # Run all tests (Cucumber.js, suppresses stderr)
 npm run test:debug      # Run all tests with full output (use when debugging failures)
 npm run test:cucumber   # Run with default Cucumber profile
 npm run test:ci         # Run with CI profile
-npm run build           # Full build: clean → tsc → rolldown → dts-bundle-generator → copy
+npm run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
 npm run lint            # ESLint
 npm run format          # Prettier
 ```
@@ -108,7 +108,7 @@ Step definitions in `features/steps/analyzerSteps.ts` provide these steps:
 
 ### Build Output
 
-Vite produces ESM (`dist/step-forge.js`) and `dts-bundle-generator` creates a single `dist/index.d.ts`. The `build/` directory contains the publishable package.
+`tsdown` (configured in `tsdown.config.ts`, powered by rolldown) produces both the JS bundles and the bundled type declarations in one pass: ESM + CJS for the main entry (`dist/step-forge.js` / `.cjs` with `dist/step-forge.d.ts` / `.d.cts`), and ESM for the analyzer library and CLI (`dist/analyzer.js`, `dist/analyzer-cli.js`). Dependencies and `node:` builtins are externalized automatically. The `build/` directory contains the publishable package.
 
 ## Exports
 
