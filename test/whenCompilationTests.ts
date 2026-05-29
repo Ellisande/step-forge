@@ -10,6 +10,15 @@ whenBuilder<SampleGivenState, SampleWhenState>()
     };
   });
 
+// Simple promise example
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement("When a user does something")
+  .step(async () => {
+    return {
+      e: "action",
+    };
+  });
+
 // Simple dependency on given state example
 whenBuilder<SampleGivenState, SampleWhenState>()
   .statement("When a user does something")

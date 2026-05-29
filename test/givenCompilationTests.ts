@@ -10,6 +10,15 @@ givenBuilder<SampleGivenState>()
     };
   });
 
+// Simple promise example
+givenBuilder<SampleGivenState>()
+  .statement("Given a user")
+  .step(async () => {
+    return {
+      a: "user",
+    };
+  });
+
 // Simple dependency example
 givenBuilder<SampleGivenState>()
   .statement("Given a user")
