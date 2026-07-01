@@ -9,7 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser, TableParser } from "./parsers";
+import { Parser } from "./parsers";
 
 const givenDependencies =
   <
@@ -17,12 +17,10 @@ const givenDependencies =
     ResolvedStepType extends StepType,
     Variables,
     GivenState,
-    Table = undefined,
   >(
     statement: Statement,
     stepType: ResolvedStepType,
-    parsers?: Parser<any>[],
-    table?: TableParser<Table>
+    parsers?: Parser<any>[]
   ) =>
   <GivenDeps extends RequiredOrOptional<GivenState>>(dependencies: {
     given: GivenDeps;
@@ -54,45 +52,8 @@ const givenDependencies =
         never, // then state
         RestrictedGivenState,
         never, // restricted when state
-        never, // restricted then state
-        Table
-      >(statement, stepType, fullDependencies, parsers, table),
-    };
-  };
-
-const givenTable =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables,
-    GivenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
-    parsers?: Parser<any>[]
-  ) =>
-  <T>(table: TableParser<T>) => {
-    return {
-      dependencies: givenDependencies<
-        Statement,
-        ResolvedStepType,
-        Variables,
-        GivenState,
-        T
-      >(statement, stepType, parsers, table),
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        EmptyDependencies,
-        Variables,
-        GivenState,
-        never,
-        never,
-        never,
-        never,
-        never,
-        T
-      >(statement, stepType, undefined, parsers, table),
+        never // restricted then state
+      >(statement, stepType, fullDependencies, parsers),
     };
   };
 
@@ -116,11 +77,6 @@ const givenParsers =
         Variables,
         GivenState
       >(statement, stepType, parsers as unknown as Parser<any>[]),
-      table: givenTable<Statement, ResolvedStepType, Variables, GivenState>(
-        statement,
-        stepType,
-        parsers as unknown as Parser<any>[]
-      ),
       step: addStep<
         ResolvedStepType,
         Statement,
@@ -164,12 +120,6 @@ const givenStatement =
       Variables,
       GivenState
     >(normalizedStatement, stepType);
-    const tableFunc = givenTable<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState
-    >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
@@ -185,7 +135,6 @@ const givenStatement =
     return {
       dependencies: dependencyFunc,
       parsers: parsersFunc,
-      table: tableFunc,
       step: stepFunc,
     };
   };

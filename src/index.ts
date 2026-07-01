@@ -7,10 +7,8 @@ import {
   intParser,
   numberParser,
   booleanParser,
-  rawTableParser,
-  recordsTableParser,
 } from "./parsers";
-import type { Parser, TableParser } from "./parsers";
+import type { Parser } from "./parsers";
 import {
   analyze,
   extractStepDefinitions,
@@ -49,8 +47,6 @@ export {
   intParser,
   numberParser,
   booleanParser,
-  rawTableParser,
-  recordsTableParser,
   createBuilders,
   beforeScenario,
   afterScenario,
@@ -60,7 +56,7 @@ export {
   afterAll,
 };
 
-export type { Parser, TableParser };
+export type { Parser };
 export type {
   ScenarioInfo,
   PlainHookFn,

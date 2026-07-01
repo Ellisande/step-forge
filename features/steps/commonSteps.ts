@@ -1,7 +1,7 @@
 import { givenBuilder } from "../../src/given";
 import { whenBuilder } from "../../src/when";
 import { thenBuilder } from "../../src/then";
-import { intParser, stringParser, TableParser } from "../../src/parsers";
+import { intParser, stringParser } from "../../src/parsers";
 import {
   beforeFeature,
   beforeScenario,
@@ -31,14 +31,6 @@ beforeScenario(({ scenario }) => {
 afterScenario(() => {
   // Purely a smoke test that after-hooks run without a world contract.
 });
-
-// A typed table parser: header row `| name | age |` over N body rows becomes a
-// typed `{ name: string; age: number }[]`. The parser owns coercion, exactly
-// like a scalar Parser<T>.
-const usersTableParser: TableParser<GivenState["users"]> = {
-  parse: ([, ...body]) =>
-    body.map(([name, age]) => ({ name, age: parseInt(age, 10) })),
-};
 
 // --- No dependency no variable steps --- //
 givenBuilder<GivenState>()
@@ -155,24 +147,4 @@ thenBuilder<GivenState, WhenState, ThenState>()
     expect(featureStarted).toEqual(true);
     expect(beforeScenarioRuns > 0).toEqual(true);
     expect(lastScenarioName).toEqual(name);
-  });
-
-// --- Data table steps --- //
-
-givenBuilder<GivenState>()
-  .statement("the following users")
-  .table(usersTableParser)
-  .step(({ table }) => {
-    // `table` is typed as GivenState["users"] — no `as`, no manual coercion.
-    return { users: table };
-  });
-
-thenBuilder<GivenState, WhenState, ThenState>()
-  .statement((count: number) => `there are ${count} users`)
-  .parsers([intParser])
-  .dependencies({ given: { users: "required" } })
-  .step(({ variables: [count], given: { users } }) => {
-    expect(users.length).toEqual(count);
-    expect(users[0].age).toEqual(30);
-    expect(typeof users[0].age).toEqual("number");
   });

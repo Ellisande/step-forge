@@ -139,7 +139,7 @@ export async function runScenario(
     }
     try {
       const { step: def, args } = matchStep(step, compiled);
-      await def.execute(world, args, step.dataTable);
+      await def.execute(world, args);
       steps.push({ step, status: "passed" });
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));

@@ -28,10 +28,3 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
     Scenario: Feature and scenario hooks run around a scenario
         Given I started
         Then the hooks have run for scenario "Feature and scenario hooks run around a scenario"
-
-    Scenario: A step can consume a data table through a typed table parser
-        Given the following users
-            | name  | age |
-            | John  | 30  |
-            | Sarah | 42  |
-        Then there are 2 users

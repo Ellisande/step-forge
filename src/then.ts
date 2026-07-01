@@ -8,7 +8,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser, TableParser } from "./parsers";
+import { Parser } from "./parsers";
 
 const thenDependencies =
   <
@@ -18,12 +18,10 @@ const thenDependencies =
     GivenState,
     WhenState,
     ThenState,
-    Table = undefined,
   >(
     statement: Statement,
     stepType: ResolvedStepType,
-    parsers?: Parser<any>[],
-    table?: TableParser<Table>
+    parsers?: Parser<any>[]
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -76,49 +74,8 @@ const thenDependencies =
         ThenState,
         RestrictedGivenState,
         RestrictedWhenState,
-        RestrictedThenState,
-        Table
-      >(statement, stepType, fullDependencies, parsers, table),
-    };
-  };
-
-const thenTable =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables,
-    GivenState,
-    WhenState,
-    ThenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
-    parsers?: Parser<any>[]
-  ) =>
-  <T>(table: TableParser<T>) => {
-    return {
-      dependencies: thenDependencies<
-        Statement,
-        ResolvedStepType,
-        Variables,
-        GivenState,
-        WhenState,
-        ThenState,
-        T
-      >(statement, stepType, parsers, table),
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        EmptyDependencies,
-        Variables,
-        GivenState,
-        WhenState,
-        ThenState,
-        never,
-        never,
-        never,
-        T
-      >(statement, stepType, undefined, parsers, table),
+        RestrictedThenState
+      >(statement, stepType, fullDependencies, parsers),
     };
   };
 
@@ -139,14 +96,6 @@ const thenParsers =
   ) => {
     return {
       dependencies: thenDependencies<
-        Statement,
-        ResolvedStepType,
-        Variables,
-        GivenState,
-        WhenState,
-        ThenState
-      >(statement, stepType, parsers as unknown as Parser<any>[]),
-      table: thenTable<
         Statement,
         ResolvedStepType,
         Variables,
@@ -203,14 +152,6 @@ const thenStatement =
       WhenState,
       ThenState
     >(normalizedStatement, stepType);
-    const tableFunc = thenTable<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState,
-      WhenState,
-      ThenState
-    >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
@@ -226,7 +167,6 @@ const thenStatement =
     return {
       dependencies: dependencyFunc,
       parsers: parsersFunc,
-      table: tableFunc,
       step: stepFunc,
     };
   };
