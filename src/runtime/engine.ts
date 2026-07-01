@@ -165,16 +165,43 @@ export async function runScenario(
   };
 
   if (failed && firstError) {
-    // Surface the failing Gherkin line to the runner's stack when a step failed;
-    // hook failures have no step to point at, so surface them as-is.
+    // Surface the failing Gherkin line as a real stack frame so the runner
+    // renders a code frame from the `.feature` file itself. Hook failures have
+    // no step to point at, so they surface with their own stack unchanged.
     const failing = steps.find(s => s.status === "failed");
-    if (failing) {
-      firstError.message =
-        `${scenario.file}:${failing.step.line} — ` +
-        `${failing.step.effectiveKeyword} ${failing.step.text}\n${firstError.message}`;
-    }
+    if (failing) attachFeatureFrame(firstError, scenario.file, failing.step);
     throw firstError;
   }
 
   return result;
+}
+
+/**
+ * Prepend a synthetic stack frame pointing at the failing Gherkin step. Because
+ * the frame's file is the real `.feature` on disk, the test runner treats it as
+ * a source location and shows a code frame at the step — instead of us jamming
+ * `file:line` into the error message. The frame goes *above* the real stack, so
+ * the step-definition frames (the actual throw site) are preserved below it.
+ */
+function attachFeatureFrame(
+  error: Error,
+  file: string,
+  step: ParsedStep
+): void {
+  const label = `${step.effectiveKeyword} ${step.text}`;
+  const frame = `    at ${label} (${file}:${step.line}:${step.column})`;
+  const stack = error.stack;
+  if (!stack) {
+    error.stack = `${error.name}: ${error.message}\n${frame}`;
+    return;
+  }
+  // A message can span multiple lines, so split on the first frame marker
+  // rather than the first newline to find where the header ends.
+  const firstFrame = stack.indexOf("\n    at ");
+  if (firstFrame === -1) {
+    error.stack = `${stack}\n${frame}`;
+  } else {
+    error.stack =
+      stack.slice(0, firstFrame) + `\n${frame}` + stack.slice(firstFrame);
+  }
 }
