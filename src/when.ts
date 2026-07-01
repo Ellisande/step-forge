@@ -1,26 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  EmptyDependencies,
-  EmptyObject,
+  FullDependencies,
   GetFunctionArgs,
   isString,
   RequiredOrOptional,
+  Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
 import { Parser } from "./parsers";
 
+const WHEN: StepType = "when";
+
+// The object a when step receives: `given` and `when` are reachable (narrowed to
+// declared dependencies, or `never` when none), `then` is always out of reach.
+type WhenInput<Variables, Given, When> = {
+  variables: Variables;
+  given: Given;
+  when: When;
+  then: never;
+};
+type WhenOutput<WhenState> = Partial<WhenState> | Promise<Partial<WhenState>>;
+
 const whenDependencies =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables,
-    GivenState,
-    WhenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
+  <Variables, GivenState, WhenState>(
+    statement: (...args: any[]) => string,
     parsers?: Parser<any>[]
   ) =>
   <
@@ -29,137 +34,69 @@ const whenDependencies =
   >(dependencies: {
     given?: GivenDeps;
     when?: WhenDeps;
-  }) => {
-    type RestrictedGivenState = {
-      [K in keyof GivenState as K extends keyof GivenDeps
-        ? K
-        : never]: GivenDeps[K] extends "optional"
-        ? GivenState[K] | undefined
-        : GivenState[K];
-    };
-    type RestrictedWhenState = {
-      [K in keyof WhenState as K extends keyof WhenDeps
-        ? K
-        : never]: WhenDeps[K] extends "optional"
-        ? WhenState[K] | undefined
-        : WhenState[K];
-    };
-    type Dependencies = {
-      given: GivenDeps;
-      when: WhenDeps;
-      then: EmptyObject;
-    };
-    const fullDependencies: Dependencies = {
-      given: dependencies.given ?? ({} as GivenDeps),
-      when: dependencies.when ?? ({} as WhenDeps),
-      then: {},
-    };
-    return {
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        Dependencies,
+  }) => ({
+    step: addStep<
+      WhenInput<
         Variables,
-        GivenState,
-        WhenState,
-        never,
-        RestrictedGivenState,
-        RestrictedWhenState,
-        never
-      >(statement, stepType, fullDependencies, parsers),
-    };
-  };
+        Restrict<GivenState, GivenDeps>,
+        Restrict<WhenState, WhenDeps>
+      >,
+      WhenOutput<WhenState>
+    >(
+      statement,
+      WHEN,
+      {
+        given: dependencies.given ?? {},
+        when: dependencies.when ?? {},
+        then: {},
+      } as FullDependencies,
+      parsers
+    ),
+  });
 
 const whenParsers =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables extends any[],
-    GivenState,
-    WhenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType
+  <Variables extends any[], GivenState, WhenState>(
+    statement: (...args: any[]) => string
   ) =>
   <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
     parsers: Parsers
-  ) => {
-    return {
-      dependencies: whenDependencies<
-        Statement,
-        ResolvedStepType,
-        Variables,
-        GivenState,
-        WhenState
-      >(statement, stepType, parsers as unknown as Parser<any>[]),
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        EmptyDependencies,
-        Variables,
-        GivenState,
-        WhenState,
-        never,
-        never,
-        never,
-        never
-      >(statement, stepType, undefined, parsers as unknown as Parser<any>[]),
-    };
-  };
+  ) => ({
+    dependencies: whenDependencies<Variables, GivenState, WhenState>(
+      statement,
+      parsers as unknown as Parser<any>[]
+    ),
+    step: addStep<WhenInput<Variables, never, never>, WhenOutput<WhenState>>(
+      statement,
+      WHEN,
+      undefined,
+      parsers as unknown as Parser<any>[]
+    ),
+  });
 
 const whenStatement =
-  <ResolvedStepType extends StepType, GivenState, WhenState>(
-    stepType: ResolvedStepType
-  ) =>
+  <GivenState, WhenState>() =>
   <Statement extends ((...args: [...any]) => string) | string>(
     statement: Statement
   ) => {
-    let normalizedStatement: Statement extends string
-      ? () => string
-      : Statement;
-    if (isString(statement)) {
-      normalizedStatement = (() => statement) as any;
-    } else {
-      normalizedStatement = statement as any;
-    }
-    type NormalizedStatement = typeof normalizedStatement;
+    const normalizedStatement: (...args: any[]) => string = isString(statement)
+      ? () => statement
+      : (statement as (...args: any[]) => string);
 
     type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
-    const dependencyFunc = whenDependencies<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState,
-      WhenState
-    >(normalizedStatement, stepType);
-    const parsersFunc = whenParsers<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState,
-      WhenState
-    >(normalizedStatement, stepType);
-    const stepFunc = addStep<
-      ResolvedStepType,
-      NormalizedStatement,
-      EmptyDependencies,
-      Variables,
-      GivenState,
-      WhenState,
-      never,
-      never,
-      never,
-      never
-    >(normalizedStatement, stepType);
     return {
-      dependencies: dependencyFunc,
-      parsers: parsersFunc,
-      step: stepFunc,
+      dependencies: whenDependencies<Variables, GivenState, WhenState>(
+        normalizedStatement
+      ),
+      parsers: whenParsers<Variables, GivenState, WhenState>(
+        normalizedStatement
+      ),
+      step: addStep<WhenInput<Variables, never, never>, WhenOutput<WhenState>>(
+        normalizedStatement,
+        WHEN
+      ),
     };
   };
 
-export const whenBuilder = <GivenState, WhenState>() => {
-  return {
-    statement: whenStatement<"when", GivenState, WhenState>("when"),
-  };
-};
+export const whenBuilder = <GivenState, WhenState>() => ({
+  statement: whenStatement<GivenState, WhenState>(),
+});

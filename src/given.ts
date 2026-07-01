@@ -1,146 +1,92 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  EmptyDependencies,
-  EmptyObject,
+  FullDependencies,
   GetFunctionArgs,
   isString,
   RequiredOrOptional,
+  Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
 import { Parser } from "./parsers";
 
+const GIVEN: StepType = "given";
+
+// The `{ variables, given, when, then }` object a given step receives. Only
+// `given` is reachable — when/then are `never`, enforcing phase restriction.
+// `Given` is the state already narrowed to declared dependencies (`never` when
+// no dependencies were declared).
+type GivenInput<Variables, Given> = {
+  variables: Variables;
+  given: Given;
+  when: never;
+  then: never;
+};
+type GivenOutput<GivenState> =
+  | Partial<GivenState>
+  | Promise<Partial<GivenState>>;
+
 const givenDependencies =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables,
-    GivenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
+  <Variables, GivenState>(
+    statement: (...args: any[]) => string,
     parsers?: Parser<any>[]
   ) =>
   <GivenDeps extends RequiredOrOptional<GivenState>>(dependencies: {
     given: GivenDeps;
-  }) => {
-    type RestrictedGivenState = {
-      [K in keyof GivenState as K extends keyof GivenDeps
-        ? K
-        : never]: GivenDeps[K] extends "optional"
-        ? GivenState[K] | undefined
-        : GivenState[K];
-    };
-    type Dependencies = typeof dependencies & {
-      when: EmptyObject;
-      then: EmptyObject;
-    };
-    const fullDependencies = {
-      ...dependencies,
-      when: {},
-      then: {},
-    };
-    return {
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        Dependencies,
-        Variables,
-        GivenState,
-        never, // when state
-        never, // then state
-        RestrictedGivenState,
-        never, // restricted when state
-        never // restricted then state
-      >(statement, stepType, fullDependencies, parsers),
-    };
-  };
+  }) => ({
+    step: addStep<
+      GivenInput<Variables, Restrict<GivenState, GivenDeps>>,
+      GivenOutput<GivenState>
+    >(
+      statement,
+      GIVEN,
+      { ...dependencies, when: {}, then: {} } as FullDependencies,
+      parsers
+    ),
+  });
 
 const givenParsers =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables extends any[],
-    GivenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType
+  <Variables extends any[], GivenState>(
+    statement: (...args: any[]) => string
   ) =>
   <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
     parsers: Parsers
-  ) => {
-    return {
-      dependencies: givenDependencies<
-        Statement,
-        ResolvedStepType,
-        Variables,
-        GivenState
-      >(statement, stepType, parsers as unknown as Parser<any>[]),
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        EmptyDependencies,
-        Variables,
-        GivenState,
-        never,
-        never,
-        never,
-        never,
-        never
-      >(statement, stepType, undefined, parsers as unknown as Parser<any>[]),
-    };
-  };
+  ) => ({
+    dependencies: givenDependencies<Variables, GivenState>(
+      statement,
+      parsers as unknown as Parser<any>[]
+    ),
+    step: addStep<GivenInput<Variables, never>, GivenOutput<GivenState>>(
+      statement,
+      GIVEN,
+      undefined,
+      parsers as unknown as Parser<any>[]
+    ),
+  });
 
 const givenStatement =
-  <ResolvedStepType extends StepType, GivenState>(stepType: ResolvedStepType) =>
+  <GivenState>() =>
   <Statement extends ((...args: [...any]) => string) | string>(
     statement: Statement
   ) => {
-    let normalizedStatement: Statement extends string
-      ? () => string
-      : Statement;
-    if (isString(statement)) {
-      normalizedStatement = (() => statement) as any;
-    } else {
-      normalizedStatement = statement as any;
-    }
-    type NormalizedStatement = typeof normalizedStatement;
+    const normalizedStatement: (...args: any[]) => string = isString(statement)
+      ? () => statement
+      : (statement as (...args: any[]) => string);
 
     type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
-    const dependencyFunc = givenDependencies<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState
-    >(normalizedStatement, stepType);
-    const parsersFunc = givenParsers<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState
-    >(normalizedStatement, stepType);
-    const stepFunc = addStep<
-      ResolvedStepType,
-      NormalizedStatement,
-      EmptyDependencies,
-      Variables,
-      GivenState,
-      never,
-      never,
-      never,
-      never,
-      never
-    >(normalizedStatement, stepType);
     return {
-      dependencies: dependencyFunc,
-      parsers: parsersFunc,
-      step: stepFunc,
+      dependencies: givenDependencies<Variables, GivenState>(
+        normalizedStatement
+      ),
+      parsers: givenParsers<Variables, GivenState>(normalizedStatement),
+      step: addStep<GivenInput<Variables, never>, GivenOutput<GivenState>>(
+        normalizedStatement,
+        GIVEN
+      ),
     };
   };
 
-export const givenBuilder = <GivenState>() => {
-  return {
-    statement: givenStatement<"given", GivenState>("given"),
-  };
-};
+export const givenBuilder = <GivenState>() => ({
+  statement: givenStatement<GivenState>(),
+});
