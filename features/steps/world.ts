@@ -1,6 +1,3 @@
-import { setWorldConstructor } from "@cucumber/cucumber";
-import { BasicWorld } from "../../src/world";
-
 export interface GivenState {
   user: {
     type: string;
@@ -25,5 +22,3 @@ export interface WhenState {
 }
 
 export interface ThenState {}
-
-setWorldConstructor(BasicWorld<GivenState, WhenState, ThenState>);

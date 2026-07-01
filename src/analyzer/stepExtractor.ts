@@ -59,11 +59,12 @@ function extractFromSourceFile(
   const results: StepDefinitionMeta[] = [];
 
   function visit(node: ts.Node) {
-    // Look for .register() call expressions
+    // The chain now terminates at `.step(...)`, which is the registration
+    // point (there is no `.register()` anymore).
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "register"
+      node.expression.name.text === "step"
     ) {
       const meta = extractFromRegisterCall(node, sourceFile, checker);
       if (meta) {

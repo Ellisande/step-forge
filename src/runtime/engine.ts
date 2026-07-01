@@ -64,7 +64,11 @@ function matchStep(
     if (def.stepType !== expectedType) continue;
     const result = expression.match(step.text);
     if (result) {
-      matches.push({ step: def, args: result.map(a => a.getValue(null)) });
+      // Hand the parsers the *raw* matched text (e.g. `"USD"` with quotes) and
+      // let them own coercion, rather than using the expression's own type
+      // transform. The placeholder still drives matching; the parser drives
+      // the value.
+      matches.push({ step: def, args: result.map(a => a.group.value) });
     }
   }
 

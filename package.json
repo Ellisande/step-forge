@@ -28,10 +28,10 @@
   "types": "./dist/step-forge.d.ts",
   "scripts": {
     "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md LICENSE.md CHANGELOG.md build/",
-    "test:cucumber": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p default",
-    "test:ci": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p ci",
-    "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none NODE_OPTIONS='--import tsx' cucumber-js -p all 2> /dev/null",
-    "test:debug": "NODE_ENV=test PORT=7888 NODE_OPTIONS='--import tsx' cucumber-js -p all",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ci": "vitest run",
+    "test:debug": "vitest run --reporter=verbose",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"
   },

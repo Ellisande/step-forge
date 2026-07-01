@@ -16,8 +16,7 @@ Given("a bank user")
         token: "random",
       },
     };
-  })
-  .register();
+  });
 
 When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
   .dependencies({ given: { user: "required" } })
@@ -30,13 +29,11 @@ When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
         user,
       },
     };
-  })
-  .register();
+  });
 
 Then((amount: string) => `the balance is ${amount}`)
   .dependencies({ when: { deposit: "required" } })
   .step(({ when: { deposit }, variables: [rawAmount] }) => {
     const amount = parseFloat(rawAmount);
     expect(deposit.amount).toEqual(amount);
-  })
-  .register();
+  });

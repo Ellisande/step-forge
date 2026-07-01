@@ -1,41 +1,40 @@
 /**
- * A Parser maps a Cucumber expression placeholder to a typed value.
+ * A Parser maps a step-expression placeholder to a typed value.
  *
- * `gherkin` is the Cucumber Expression placeholder used when registering the
- * step (e.g. `{int}`). `parse` converts the raw value Cucumber captures into
- * the desired TypeScript type.
- *
- * Note: Cucumber Expressions already transform `{int}`/`{float}` captures into
- * JS numbers before the step function runs, so `parse` receives an `unknown`
- * and must tolerate both the pre-transformed value and a raw string.
+ * `gherkin` is the placeholder used when the step is registered (e.g. `{int}`),
+ * which drives how the matcher recognises the value in a Gherkin step. `parse`
+ * then converts the *raw matched text* into the desired TypeScript type — the
+ * parser owns coercion end to end, so `{string}` arrives quoted and it is the
+ * parser's job to unquote it.
  */
 export type Parser<T> = {
-  parse: (value: unknown) => T;
+  parse: (value: string) => T;
   gherkin: string;
 };
 
-/** Matches a quoted string (`{string}`) and passes the unquoted contents through. */
+/** Matches a quoted string (`{string}`) and strips the surrounding quotes. */
 export const stringParser: Parser<string> = {
-  parse: value => String(value),
+  parse: value => {
+    const match = /^"([\s\S]*)"$/.exec(value) ?? /^'([\s\S]*)'$/.exec(value);
+    return match ? match[1].replace(/\\(["'])/g, "$1") : value;
+  },
   gherkin: "{string}",
 };
 
 /** Matches an unquoted integer (`{int}`). */
 export const intParser: Parser<number> = {
-  parse: value =>
-    typeof value === "number" ? value : parseInt(String(value), 10),
+  parse: value => parseInt(value, 10),
   gherkin: "{int}",
 };
 
 /** Matches an unquoted floating point number (`{float}`). */
 export const numberParser: Parser<number> = {
-  parse: value =>
-    typeof value === "number" ? value : parseFloat(String(value)),
+  parse: value => parseFloat(value),
   gherkin: "{float}",
 };
 
 /** Matches an unquoted `true`/`false` word (`{word}`) and parses it to a boolean. */
 export const booleanParser: Parser<boolean> = {
-  parse: value => value === true || value === "true",
+  parse: value => value === "true",
   gherkin: "{word}",
 };

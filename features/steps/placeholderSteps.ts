@@ -19,8 +19,7 @@ thenBuilder<GivenState, WhenState, ThenState>()
         user: { type: "person", token: userName },
       }));
     expect(built.expression).toEqual("a user named {string}");
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("a step with an int parser uses the int placeholder")
@@ -36,8 +35,7 @@ thenBuilder<GivenState, WhenState, ThenState>()
         },
       }));
     expect(built.expression).toEqual("I deposit {int}");
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((value: string) => `an unparsed value of ${value} is a string`)
@@ -46,5 +44,4 @@ thenBuilder<GivenState, WhenState, ThenState>()
     // than being coerced to a number.
     expect(typeof value).toEqual("string");
     expect(value).toEqual("100");
-  })
-  .register();
+  });

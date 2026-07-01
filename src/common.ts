@@ -1,9 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  Given as CucGiven,
-  Then as CucThen,
-  When as CucWhen,
-} from "@cucumber/cucumber";
 import _ from "lodash";
 
 import { StepType } from "./builderTypeUtils";
@@ -11,12 +6,6 @@ import { Parser, stringParser } from "./parsers";
 import { globalRegistry } from "./runtime/registry";
 import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
 import { MergeableWorld } from "./world";
-
-const cucFunctionMap = {
-  given: CucGiven,
-  when: CucWhen,
-  then: CucThen,
-};
 
 export const addStep =
   <
@@ -83,10 +72,9 @@ export const addStep =
       world: MergeableWorld<GivenState, WhenState, ThenState>,
       rawArgs: unknown[]
     ) => {
-      // Iterate over parsers (not args) so any trailing arguments a runner
-      // might pass don't get parsed as if they were captured variables.
+      // Each raw value captured from the Gherkin step is coerced by its parser.
       const coercedArgs = parsers.map((parser, index) =>
-        parser.parse(rawArgs[index])
+        parser.parse(rawArgs[index] as string)
       );
       const requiredGivenKeys = Object.entries(givenDependencies ?? {})
         .filter(([, value]) => value === "required")
@@ -132,43 +120,15 @@ export const addStep =
       });
     };
 
+    // Registration is the terminal action of the builder chain: calling
+    // `.step(fn)` makes the step matchable and executable by the runtime.
+    globalRegistry.add({ stepType, expression, parsers, execute });
+
     return {
       statement,
       expression,
       dependencies,
       stepType,
       stepFunction,
-      register: () => {
-        // Native runtime: make this step matchable/executable without Cucumber.
-        globalRegistry.add({ stepType, expression, parsers, execute });
-
-        // Cucumber adapter (still wired so the existing suite keeps passing).
-        const cucStepFunction = Object.defineProperty(
-          async function (
-            this: MergeableWorld<GivenState, WhenState, ThenState>,
-            ...args: string[]
-          ) {
-            await execute(this, args);
-          },
-          "length",
-          { value: argCount, configurable: true }
-        );
-        // Cucumber throws if its functions are called while it isn't the
-        // active runtime (e.g. under the native Vitest runner). Since the
-        // registry above is the real source of truth, that's non-fatal here.
-        try {
-          const cucStep = cucFunctionMap[stepType];
-          cucStep(expression, cucStepFunction);
-        } catch {
-          /* Cucumber not running — native runtime handles this step. */
-        }
-        return {
-          stepType,
-          expression,
-          dependencies,
-          statement: statementFunction,
-          stepFunction,
-        };
-      },
     };
   };

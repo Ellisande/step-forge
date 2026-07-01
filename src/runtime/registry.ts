@@ -30,7 +30,7 @@ export interface RegisteredStep {
 /**
  * A collection of registered steps. Deliberately a plain instance (not a hidden
  * module global) so tests and the Vitest plugin can create isolated registries.
- * `globalRegistry` is the default sink that `.register()` writes to.
+ * `globalRegistry` is the default sink that `.step()` writes to.
  */
 export class StepRegistry {
   private steps: RegisteredStep[] = [];

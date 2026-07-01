@@ -8,18 +8,15 @@ import { expect } from "earl";
 // --- No dependency no variable steps --- //
 givenBuilder<GivenState>()
   .statement("I started")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 whenBuilder<GivenState, WhenState>()
   .statement("I got here")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("everything was good")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 // --- Dependency only steps --- //
 givenBuilder<GivenState>()
@@ -31,8 +28,7 @@ givenBuilder<GivenState>()
         token: "random",
       },
     };
-  })
-  .register();
+  });
 
 whenBuilder<GivenState, WhenState>()
   .statement("I save the user")
@@ -44,16 +40,14 @@ whenBuilder<GivenState, WhenState>()
         saved: true,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("there is a user")
   .dependencies({ when: { user: "required" } })
   .step(({ when: { user } }) => {
     expect(user.saved).toBeTruthy();
-  })
-  .register();
+  });
 
 // --- Variable only steps --- //
 givenBuilder<GivenState>()
@@ -65,8 +59,7 @@ givenBuilder<GivenState>()
         token: userName,
       },
     };
-  })
-  .register();
+  });
 
 // --- More complex steps --- //
 
@@ -81,8 +74,7 @@ whenBuilder<GivenState, WhenState>()
         saved: true,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((userName: string) => `the user's name is ${userName}`)
@@ -90,8 +82,7 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ when: { user }, variables: [userName] }) => {
     const token = user.token;
     expect(token).toEqual(userName);
-  })
-  .register();
+  });
 
 // --- Unquoted number variables (parsers) --- //
 
@@ -109,8 +100,7 @@ whenBuilder<GivenState, WhenState>()
         user,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((amount: number) => `the deposit amount is ${amount}`)
@@ -119,5 +109,4 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ variables: [amount], when: { deposit } }) => {
     expect(deposit.amount).toEqual(amount);
     expect(typeof deposit.amount).toEqual("number");
-  })
-  .register();
+  });

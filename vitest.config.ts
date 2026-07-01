@@ -5,7 +5,7 @@ import { stepForge } from "./src/runtime/vitest";
 export default defineConfig({
   plugins: [
     stepForge({
-      steps: ["features/steps/**/*.ts"],
+      steps: ["features/steps/commonSteps.ts"],
       world: "features/steps/makeWorld.ts",
       features: "features/basic.feature",
     }),
