@@ -15,6 +15,18 @@ export interface ParsedScenario {
   name: string;
   file: string;
   steps: ParsedStep[];
+  /**
+   * Gherkin tags in effect for this scenario, each including the leading `@`
+   * (feature + scenario tags, plus the Examples-block tags for outline rows).
+   * The Vitest plugin maps `@skip`/`@only` onto `test.skip`/`test.only`.
+   */
+  tags: string[];
+  /**
+   * Present only for rows expanded from a `Scenario Outline`. Carries the base
+   * outline name so the plugin can group its rows under one `describe`, with
+   * each row a separate `test` labelled by its example values.
+   */
+  outline?: { name: string };
 }
 
 export interface ParsedStep {

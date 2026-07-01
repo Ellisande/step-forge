@@ -1,6 +1,7 @@
 import { glob } from "node:fs/promises";
 import * as path from "node:path";
 import { parseFeatureContent } from "../analyzer/gherkinParser";
+import { ParsedScenario } from "../analyzer/types";
 
 export interface StepForgeOptions {
   /**
@@ -52,6 +53,55 @@ const DEFAULT_CORE_MODULE = "@step-forge/step-forge";
 
 function toArray<T>(value: T | T[]): T[] {
   return Array.isArray(value) ? value : [value];
+}
+
+/**
+ * Map a scenario's Gherkin tags onto the Vitest test variant. `@skip` wins over
+ * `@only` (a scenario explicitly skipped stays skipped even if also `@only`ed),
+ * and everything else is a plain `test`.
+ */
+function testFn(tags: string[]): string {
+  if (tags.includes("@skip")) return "test.skip";
+  if (tags.includes("@only")) return "test.only";
+  return "test";
+}
+
+/** One `runScenario` test line for the scenario at `__scenarios[index]`. */
+function testLine(
+  scenario: ParsedScenario,
+  index: number,
+  indent: string
+): string {
+  return (
+    `${indent}${testFn(scenario.tags)}(${JSON.stringify(scenario.name)}, () => ` +
+    `runScenario(__scenarios[${index}], globalRegistry, __makeWorld));`
+  );
+}
+
+/**
+ * Emit the test bodies for a feature. Plain scenarios become one `test` each;
+ * consecutive rows expanded from the same `Scenario Outline` are wrapped in a
+ * `describe` named after the outline, so they read as one labelled group with a
+ * `test` per example row (and each row keeps its own `@skip`/`@only`).
+ */
+function generateTests(scenarios: ParsedScenario[]): string {
+  const lines: string[] = [];
+  let i = 0;
+  while (i < scenarios.length) {
+    const outlineName = scenarios[i].outline?.name;
+    if (outlineName === undefined) {
+      lines.push(testLine(scenarios[i], i, "  "));
+      i += 1;
+      continue;
+    }
+    lines.push(`  describe(${JSON.stringify(outlineName)}, () => {`);
+    while (i < scenarios.length && scenarios[i].outline?.name === outlineName) {
+      lines.push(testLine(scenarios[i], i, "    "));
+      i += 1;
+    }
+    lines.push(`  });`);
+  }
+  return lines.join("\n");
 }
 
 function toSpecifier(p: string): string {
@@ -117,13 +167,7 @@ export function stepForge(options: StepForgeOptions = {}): VitePlugin {
         : `import { BasicWorld } from ${JSON.stringify(coreModule)};\n` +
           `const __makeWorld = () => new BasicWorld();`;
 
-      const tests = scenarios
-        .map(
-          (s, i) =>
-            `  test(${JSON.stringify(s.name)}, () => ` +
-            `runScenario(__scenarios[${i}], globalRegistry, __makeWorld));`
-        )
-        .join("\n");
+      const tests = generateTests(scenarios);
 
       const generated = `
 import { describe, test, beforeAll, afterAll } from "vitest";

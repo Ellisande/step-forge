@@ -33,6 +33,7 @@ export function parseFeatureContent(
   // Collect background steps at the feature level
   const featureBackground: messages.Step[] = [];
   const scenarios: ParsedScenario[] = [];
+  const featureTags = tagNames(feature.tags);
 
   for (const child of feature.children) {
     if (child.background) {
@@ -41,20 +42,32 @@ export function parseFeatureContent(
 
     if (child.scenario) {
       scenarios.push(
-        ...expandScenario(child.scenario, featureBackground, filePath)
+        ...expandScenario(
+          child.scenario,
+          featureBackground,
+          filePath,
+          featureTags
+        )
       );
     }
 
     if (child.rule) {
-      // Rules can have their own backgrounds
+      // Rules can have their own backgrounds and tags, both inherited by the
+      // rule's scenarios.
       const ruleBackground: messages.Step[] = [...featureBackground];
+      const ruleTags = [...featureTags, ...tagNames(child.rule.tags)];
       for (const ruleChild of child.rule.children) {
         if (ruleChild.background) {
           ruleBackground.push(...ruleChild.background.steps);
         }
         if (ruleChild.scenario) {
           scenarios.push(
-            ...expandScenario(ruleChild.scenario, ruleBackground, filePath)
+            ...expandScenario(
+              ruleChild.scenario,
+              ruleBackground,
+              filePath,
+              ruleTags
+            )
           );
         }
       }
@@ -64,11 +77,18 @@ export function parseFeatureContent(
   return scenarios;
 }
 
+/** Extract tag names (each keeping its leading `@`), deduped in order. */
+function tagNames(tags: readonly messages.Tag[] | undefined): string[] {
+  return [...new Set((tags ?? []).map(t => t.name))];
+}
+
 function expandScenario(
   scenario: messages.Scenario,
   backgroundSteps: messages.Step[],
-  filePath: string
+  filePath: string,
+  inheritedTags: string[]
 ): ParsedScenario[] {
+  const scenarioTags = [...inheritedTags, ...tagNames(scenario.tags)];
   const hasExamples =
     scenario.examples.length > 0 &&
     scenario.examples.some((e) => e.tableBody.length > 0);
@@ -84,15 +104,18 @@ function expandScenario(
         name: scenario.name,
         file: filePath,
         steps: allSteps,
+        tags: scenarioTags,
       },
     ];
   }
 
-  // Scenario Outline — expand with each example row
+  // Scenario Outline — expand with each example row. Rows carry the outline's
+  // base name so the runner can group them, plus the Examples-block tags.
   const results: ParsedScenario[] = [];
   for (const example of scenario.examples) {
     if (!example.tableHeader || example.tableBody.length === 0) continue;
     const headers = example.tableHeader.cells.map((c) => c.value);
+    const exampleTags = [...scenarioTags, ...tagNames(example.tags)];
 
     for (const row of example.tableBody) {
       const values = row.cells.map((c) => c.value);
@@ -109,9 +132,11 @@ function expandScenario(
       const allSteps = resolveEffectiveKeywords([...bgParsed, ...scenarioSteps]);
 
       results.push({
-        name: `${scenario.name} (${values.join(", ")})`,
+        name: headers.map((h, i) => `${h}=${values[i]}`).join(", "),
         file: filePath,
         steps: allSteps,
+        tags: exampleTags,
+        outline: { name: scenario.name },
       });
     }
   }

@@ -13,6 +13,10 @@ export default defineStepForgeConfig({
   world: "features/steps/makeWorld.ts",
   // Exact files, so the analyzer's own `fixtures/*.feature` (which are *inputs*
   // to `analyze()`, not tests) are never picked up as scenarios.
-  features: ["features/basic.feature", "features/analyzer/analyzer.feature"],
+  features: [
+    "features/basic.feature",
+    "features/tags.feature",
+    "features/analyzer/analyzer.feature",
+  ],
   runtimeModule,
 });
