@@ -105,6 +105,13 @@ function expandScenario(
       const scenarioSteps = convertSteps(scenario.steps).map((step) => ({
         ...step,
         text: substituteExampleValues(step.text, substitution),
+        ...(step.dataTable
+          ? {
+              dataTable: step.dataTable.map(row =>
+                row.map(cell => substituteExampleValues(cell, substitution))
+              ),
+            }
+          : {}),
       }));
       const allSteps = resolveEffectiveKeywords([...bgParsed, ...scenarioSteps]);
 
@@ -131,6 +138,13 @@ function convertSteps(
     // start of the step text. This makes `column + text.length` produce
     // the correct end position for diagnostic ranges.
     column: (step.location.column ?? 1) + step.keyword.length,
+    ...(step.dataTable
+      ? {
+          dataTable: step.dataTable.rows.map(row =>
+            row.cells.map(cell => cell.value)
+          ),
+        }
+      : {}),
   }));
 }
 

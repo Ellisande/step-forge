@@ -9,7 +9,7 @@ import {
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser } from "./parsers";
+import { Parser, TableParser } from "./parsers";
 
 const whenDependencies =
   <
@@ -18,10 +18,12 @@ const whenDependencies =
     Variables,
     GivenState,
     WhenState,
+    Table = undefined,
   >(
     statement: Statement,
     stepType: ResolvedStepType,
-    parsers?: Parser<any>[]
+    parsers?: Parser<any>[],
+    table?: TableParser<Table>
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -65,8 +67,47 @@ const whenDependencies =
         never,
         RestrictedGivenState,
         RestrictedWhenState,
-        never
-      >(statement, stepType, fullDependencies, parsers),
+        never,
+        Table
+      >(statement, stepType, fullDependencies, parsers, table),
+    };
+  };
+
+const whenTable =
+  <
+    Statement extends (...args: any[]) => string,
+    ResolvedStepType extends StepType,
+    Variables,
+    GivenState,
+    WhenState,
+  >(
+    statement: Statement,
+    stepType: ResolvedStepType,
+    parsers?: Parser<any>[]
+  ) =>
+  <T>(table: TableParser<T>) => {
+    return {
+      dependencies: whenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState,
+        T
+      >(statement, stepType, parsers, table),
+      step: addStep<
+        ResolvedStepType,
+        Statement,
+        EmptyDependencies,
+        Variables,
+        GivenState,
+        WhenState,
+        never,
+        never,
+        never,
+        never,
+        T
+      >(statement, stepType, undefined, parsers, table),
     };
   };
 
@@ -86,6 +127,13 @@ const whenParsers =
   ) => {
     return {
       dependencies: whenDependencies<
+        Statement,
+        ResolvedStepType,
+        Variables,
+        GivenState,
+        WhenState
+      >(statement, stepType, parsers as unknown as Parser<any>[]),
+      table: whenTable<
         Statement,
         ResolvedStepType,
         Variables,
@@ -139,6 +187,13 @@ const whenStatement =
       GivenState,
       WhenState
     >(normalizedStatement, stepType);
+    const tableFunc = whenTable<
+      NormalizedStatement,
+      ResolvedStepType,
+      Variables,
+      GivenState,
+      WhenState
+    >(normalizedStatement, stepType);
     const stepFunc = addStep<
       ResolvedStepType,
       NormalizedStatement,
@@ -154,6 +209,7 @@ const whenStatement =
     return {
       dependencies: dependencyFunc,
       parsers: parsersFunc,
+      table: tableFunc,
       step: stepFunc,
     };
   };

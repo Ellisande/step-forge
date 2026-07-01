@@ -3,6 +3,10 @@ export interface GivenState {
     type: string;
     token: string;
   };
+  users: {
+    name: string;
+    age: number;
+  }[];
 }
 
 export interface WhenState {

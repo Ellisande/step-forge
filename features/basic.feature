@@ -24,3 +24,10 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
         Given a user
         When I deposit 100 "USD"
         Then the deposit amount is 100
+
+    Scenario: A step can consume a data table through a typed table parser
+        Given the following users
+            | name  | age |
+            | John  | 30  |
+            | Sarah | 42  |
+        Then there are 2 users

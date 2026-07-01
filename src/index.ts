@@ -7,8 +7,10 @@ import {
   intParser,
   numberParser,
   booleanParser,
+  rawTableParser,
+  recordsTableParser,
 } from "./parsers";
-import type { Parser } from "./parsers";
+import type { Parser, TableParser } from "./parsers";
 import {
   analyze,
   extractStepDefinitions,
@@ -39,10 +41,12 @@ export {
   intParser,
   numberParser,
   booleanParser,
+  rawTableParser,
+  recordsTableParser,
   createBuilders,
 };
 
-export type { Parser };
+export type { Parser, TableParser };
 export type { StateFromDependencies } from "./typeHelpers";
 
 export const analyzer = {

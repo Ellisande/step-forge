@@ -21,7 +21,9 @@ export interface RegisteredStep {
   parsers: Parser<any>[];
   execute: (
     world: MergeableWorld<any, any, any>,
-    capturedArgs: unknown[]
+    capturedArgs: unknown[],
+    /** Raw data table rows attached to the Gherkin step, if any. */
+    rawTable?: string[][]
   ) => Promise<void>;
   /** Where the step was defined, for ambiguous-match diagnostics. */
   source?: string;

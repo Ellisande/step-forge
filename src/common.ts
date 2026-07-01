@@ -2,7 +2,7 @@
 import _ from "lodash";
 
 import { StepType } from "./builderTypeUtils";
-import { Parser, stringParser } from "./parsers";
+import { Parser, stringParser, TableParser } from "./parsers";
 import { globalRegistry } from "./runtime/registry";
 import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
 import { MergeableWorld } from "./world";
@@ -23,6 +23,7 @@ export const addStep =
     RestrictedGivenState,
     RestrictedWhenState,
     RestrictedThenState,
+    Table = undefined,
   >(
     statement: Statement,
     stepType: ResolvedStepType,
@@ -31,11 +32,13 @@ export const addStep =
       when: {},
       then: {},
     } as Dependencies,
-    declaredParsers?: Parser<any>[]
+    declaredParsers?: Parser<any>[],
+    declaredTable?: TableParser<Table>
   ) =>
   (
     stepFunction: (input: {
       variables: Variables;
+      table: Table;
       given: RestrictedGivenState;
       when: RestrictedWhenState;
       then: RestrictedThenState;
@@ -70,12 +73,31 @@ export const addStep =
     // result. Both the Cucumber adapter and the native runtime call this.
     const execute = async (
       world: MergeableWorld<GivenState, WhenState, ThenState>,
-      rawArgs: unknown[]
+      rawArgs: unknown[],
+      rawTable?: string[][]
     ) => {
       // Each raw value captured from the Gherkin step is coerced by its parser.
       const coercedArgs = parsers.map((parser, index) =>
         parser.parse(rawArgs[index] as string)
       );
+      // Data tables are strict, mirroring the engine's undefined/ambiguous
+      // stance: a declared table demands one in the feature, and a table in the
+      // feature demands a step that declares it. No silent pass-through.
+      let table: Table = undefined as Table;
+      if (declaredTable) {
+        if (!rawTable) {
+          throw new Error(
+            `Step "${expression}" declares a data table via .table() but the ` +
+              `Gherkin step supplied none.`
+          );
+        }
+        table = declaredTable.parse(rawTable);
+      } else if (rawTable) {
+        throw new Error(
+          `Step "${expression}" was given a data table but its definition does ` +
+            `not declare one via .table().`
+        );
+      }
       const requiredGivenKeys = Object.entries(givenDependencies ?? {})
         .filter(([, value]) => value === "required")
         .map(([key]) => key);
@@ -111,6 +133,7 @@ export const addStep =
       };
       const result = await stepFunction({
         variables: coercedArgs as Variables,
+        table,
         given: narrowedGiven as RestrictedGivenState,
         when: narrowedWhen as RestrictedWhenState,
         then: narrowedThen as RestrictedThenState,

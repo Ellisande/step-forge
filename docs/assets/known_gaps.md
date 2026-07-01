@@ -1,4 +1,4 @@
-1. Data tables / doc strings — gherkinParser.ts:122 drops them; need to thread table/docString into the step input object (the opinionated first-class version).
+1. ~~Data tables~~ — DONE. Declared per-step via a `.table(tableParser)` builder stage (a `TableParser<T>` owns coercion, mirroring `Parser<T>`); the parsed value surfaces as a typed `input.table`. Strict: a declared table demands one in the feature and vice-versa. Doc strings deferred — not needed yet.
 2. Hooks — no Before/After/BeforeAll yet; map to beforeEach/beforeAll in the generated describe.
 3. Source maps — errors currently prepend file:line as text rather than a real .feature sourcemap.
 4. The Cucumber try/catch in common.ts is a transitional bridge — the final step is deleting the adapter and the @cucumber/cucumber dep outright.

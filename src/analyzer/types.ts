@@ -23,6 +23,8 @@ export interface ParsedStep {
   text: string;
   line: number;
   column: number;
+  /** Raw data table attached to the step: rows of raw cell strings, header included. */
+  dataTable?: string[][];
 }
 
 export interface MatchedStep extends ParsedStep {
