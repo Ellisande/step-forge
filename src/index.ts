@@ -31,6 +31,14 @@ import type {
   MatchedStep,
 } from "./analyzer/index";
 import { createBuilders } from "./init";
+import {
+  beforeScenario,
+  afterScenario,
+  beforeFeature,
+  afterFeature,
+  beforeAll,
+  afterAll,
+} from "./hooks";
 
 export {
   givenBuilder,
@@ -44,9 +52,20 @@ export {
   rawTableParser,
   recordsTableParser,
   createBuilders,
+  beforeScenario,
+  afterScenario,
+  beforeFeature,
+  afterFeature,
+  beforeAll,
+  afterAll,
 };
 
 export type { Parser, TableParser };
+export type {
+  ScenarioInfo,
+  PlainHookFn,
+  ScenarioHookFn,
+} from "./runtime/hooks";
 export type { StateFromDependencies } from "./typeHelpers";
 
 export const analyzer = {

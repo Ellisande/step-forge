@@ -118,14 +118,20 @@ export function stepForge(options: StepForgeOptions = {}): VitePlugin {
         .join("\n");
 
       const generated = `
-import { describe, test } from "vitest";
-import { runScenario, globalRegistry } from ${JSON.stringify(runtimeModule)};
+import { describe, test, beforeAll, afterAll } from "vitest";
+import { runScenario, globalRegistry, runHooks, ensureGlobalHooks } from ${JSON.stringify(
+        runtimeModule
+      )};
 ${worldImport}
 ${stepImports}
 
 const __scenarios = ${JSON.stringify(scenarios)};
 
 describe(${JSON.stringify(featureName)}, () => {
+  // Global before-hooks fire once per worker, ahead of feature hooks.
+  beforeAll(() => ensureGlobalHooks());
+  beforeAll(() => runHooks("feature", "before"));
+  afterAll(() => runHooks("feature", "after"));
 ${tests}
 });
 `;

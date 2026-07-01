@@ -5,6 +5,7 @@ import {
 } from "@cucumber/cucumber-expressions";
 import { ParsedScenario, ParsedStep } from "../analyzer/types";
 import { MergeableWorld } from "../world";
+import { globalHookRegistry, HookRegistry, ScenarioHookFn } from "./hooks";
 import { RegisteredStep, StepRegistry, StepType } from "./registry";
 
 const keywordToStepType: Record<ParsedStep["effectiveKeyword"], StepType> = {
@@ -106,13 +107,30 @@ export interface ScenarioResult {
 export async function runScenario(
   scenario: ParsedScenario,
   registry: StepRegistry,
-  makeWorld: () => MergeableWorld<any, any, any>
+  makeWorld: () => MergeableWorld<any, any, any>,
+  hooks: HookRegistry = globalHookRegistry
 ): Promise<ScenarioResult> {
   const compiled = compile(registry);
   const world = makeWorld();
+  const scenarioInfo = { name: scenario.name, file: scenario.file };
   const steps: StepResult[] = [];
   let failed = false;
   let firstError: Error | undefined;
+
+  const fail = (err: unknown) => {
+    if (failed) return;
+    failed = true;
+    firstError = err instanceof Error ? err : new Error(String(err));
+  };
+
+  // before-scenario hooks: a throw here aborts the scenario before any step.
+  try {
+    for (const hook of hooks.for("scenario", "before")) {
+      await (hook.fn as ScenarioHookFn)({ world, scenario: scenarioInfo });
+    }
+  } catch (err) {
+    fail(err);
+  }
 
   for (const step of scenario.steps) {
     if (failed) {
@@ -126,8 +144,17 @@ export async function runScenario(
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       steps.push({ step, status: "failed", error });
-      failed = true;
-      firstError = error;
+      fail(error);
+    }
+  }
+
+  // after-scenario hooks always run (teardown), even on failure. A hook failure
+  // only becomes the scenario's error if nothing else failed first.
+  for (const hook of hooks.for("scenario", "after")) {
+    try {
+      await (hook.fn as ScenarioHookFn)({ world, scenario: scenarioInfo });
+    } catch (err) {
+      fail(err);
     }
   }
 
@@ -138,11 +165,14 @@ export async function runScenario(
   };
 
   if (failed && firstError) {
-    // Surface the failing Gherkin line to the runner's stack.
-    const failing = steps.find(s => s.status === "failed")!;
-    firstError.message =
-      `${scenario.file}:${failing.step.line} — ` +
-      `${failing.step.effectiveKeyword} ${failing.step.text}\n${firstError.message}`;
+    // Surface the failing Gherkin line to the runner's stack when a step failed;
+    // hook failures have no step to point at, so surface them as-is.
+    const failing = steps.find(s => s.status === "failed");
+    if (failing) {
+      firstError.message =
+        `${scenario.file}:${failing.step.line} — ` +
+        `${failing.step.effectiveKeyword} ${failing.step.text}\n${firstError.message}`;
+    }
     throw firstError;
   }
 

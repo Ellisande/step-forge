@@ -25,6 +25,10 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
         When I deposit 100 "USD"
         Then the deposit amount is 100
 
+    Scenario: Feature and scenario hooks run around a scenario
+        Given I started
+        Then the hooks have run for scenario "Feature and scenario hooks run around a scenario"
+
     Scenario: A step can consume a data table through a typed table parser
         Given the following users
             | name  | age |
