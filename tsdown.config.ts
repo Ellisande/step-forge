@@ -17,18 +17,26 @@ const shared = {
 };
 
 export default defineConfig([
-  // Main entry: ESM + CJS, with bundled type declarations (.d.ts / .d.cts).
+  // Main entry + runtime: ESM + CJS, with bundled type declarations. These two
+  // share a build so the step registry is emitted as a single shared chunk —
+  // the builders (main entry) and `runScenario` (runtime) must see the *same*
+  // `globalRegistry` instance, or registered steps won't be visible at run time.
   {
     ...shared,
-    entry: { "step-forge": "./src/index.ts" },
+    entry: {
+      "step-forge": "./src/index.ts",
+      runtime: "./src/runtime/index.ts",
+    },
     format: ["esm", "cjs"],
   },
-  // Analyzer library + CLI: ESM only. Shared code is split into a chunk.
+  // Analyzer library + CLI and the Vitest plugin: ESM only. Shared code is
+  // split into a chunk.
   {
     ...shared,
     entry: {
       analyzer: "./src/analyzer/index.ts",
       "analyzer-cli": "./src/analyzer/cli.ts",
+      vitest: "./src/runtime/vitest.ts",
     },
     format: ["esm"],
   },

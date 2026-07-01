@@ -1,18 +1,16 @@
-import { defineConfig } from "vitest/config";
-import { stepForge } from "./src/runtime/vitest";
+import { fileURLToPath } from "node:url";
+import { defineStepForgeConfig } from "./src/runtime/vitest";
 
-// Spike: run Gherkin features natively under Vitest, no Cucumber runtime.
-export default defineConfig({
-  plugins: [
-    stepForge({
-      steps: ["features/steps/commonSteps.ts"],
-      world: "features/steps/makeWorld.ts",
-      features: "features/basic.feature",
-    }),
-  ],
-  test: {
-    // Only the feature files are test files here; `include` is augmented by the
-    // plugin's config hook to add the `.feature` glob.
-    include: [],
-  },
+// This repo consumes the library from source, so point the generated tests at
+// the runtime source module rather than the published `@step-forge/step-forge/
+// runtime` entry. Consumers never need this override.
+const runtimeModule = fileURLToPath(
+  new URL("./src/runtime/index.ts", import.meta.url)
+);
+
+export default defineStepForgeConfig({
+  steps: ["features/steps/commonSteps.ts"],
+  world: "features/steps/makeWorld.ts",
+  features: "features/basic.feature",
+  runtimeModule,
 });

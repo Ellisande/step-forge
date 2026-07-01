@@ -5,31 +5,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                # Run all tests (Cucumber.js, suppresses stderr)
-npm run test:debug      # Run all tests with full output (use when debugging failures)
-npm run test:cucumber   # Run with default Cucumber profile
-npm run test:ci         # Run with CI profile
+npm test                # Run all feature tests (Vitest, single run)
+npm run test:watch      # Vitest watch mode
+npm run test:debug      # Single run with the verbose reporter (per-scenario output)
+npm run test:ci         # Single run (CI)
 npm run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
 npm run lint            # ESLint
 npm run format          # Prettier
 ```
 
+To run a subset, use Vitest's normal filtering: `npx vitest run features/basic.feature` (by file) or `npx vitest run -t "part of the scenario name"` (by name).
+
 ## Architecture
 
-Step Forge is a TypeScript library that wraps Cucumber.js with a type-safe builder pattern for step definitions.
+Step Forge is a TypeScript library for writing **type-safe Gherkin step definitions** using a builder pattern, with a **native runtime** that executes features under Vitest. It does **not** depend on the Cucumber.js runtime. It does use two standalone Cucumber *libraries*: `@cucumber/gherkin` (+ `@cucumber/messages`) to parse `.feature` files, and `@cucumber/cucumber-expressions` to match step text — but nothing from `@cucumber/cucumber` itself.
 
 ### Builder Chain
 
 Each Gherkin phase (given/when/then) has a builder that follows this chain:
 
 ```
-builder<State>().statement(str | fn) → .dependencies?(deps) → .step(fn) → .register()
+builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(deps) → .step(fn)
 ```
 
-- **Statement**: A string or function. Functions define variables via parameters: `(name: string) => \`a user named ${name}\`` — each parameter becomes a `{string}` placeholder in the Gherkin expression.
+- **Statement**: A string or function. Functions define variables via parameters: `(name: string) => \`a user named ${name}\`` — each parameter becomes a placeholder in the step expression (`{string}` by default, or the placeholder of the matching parser).
+- **Parsers**: Optional, one per variable. A `Parser<T>` declares the expression placeholder (`gherkin`, e.g. `{int}`) that drives matching, and a `parse` that coerces the **raw matched text** into `T`. Parsers own coercion end to end — e.g. `stringParser` strips the surrounding quotes, `intParser` parses the bare digits. Default is `stringParser` for every variable.
 - **Dependencies**: Declare which keys from other phases' state this step needs. Keys are marked `"required"` or `"optional"`. Required deps are validated at runtime; optional ones may be `undefined`.
 - **Step function**: Receives `{ variables, given, when, then }` — only the phases allowed by the builder type are accessible (given steps can't access when/then state).
-- **Register**: Calls the corresponding Cucumber.js `Given`/`When`/`Then` to wire everything up.
+- **`.step(fn)` registers.** Calling `.step()` is the terminal action: it adds the step to the runtime registry (`globalRegistry`) and returns the step metadata (`{ statement, expression, dependencies, stepType, stepFunction }`). There is no `.register()` — calling `.step()` on a partial chain both builds and registers, so building a step purely to inspect its `.expression` also registers it.
 
 ### Phase Restrictions
 
@@ -39,77 +42,53 @@ builder<State>().statement(str | fn) → .dependencies?(deps) → .step(fn) → 
 
 ### Key Source Files
 
-- `src/common.ts` — `addStep()`: core registration that wires parsers, dependency validation, and state merging into Cucumber
+- `src/common.ts` — `addStep()`: builds the step `expression` from the statement + parsers, wires the `execute(world, rawArgs)` body (parser coercion, dependency validation/narrowing, state merge), and registers into `globalRegistry` on `.step()`.
 - `src/given.ts`, `src/when.ts`, `src/then.ts` — Builder implementations with phase-specific type constraints
+- `src/parsers.ts` — `Parser<T>` (`{ gherkin, parse }`) plus builtins: `stringParser` (`{string}`, strips quotes), `intParser` (`{int}`), `numberParser` (`{float}`), `booleanParser` (`{word}`)
 - `src/world.ts` — `BasicWorld<Given, When, Then>` with `MergeableWorldState` (lodash deep merge, arrays concatenate)
 - `src/builderTypeUtils.ts` — TypeScript utility types driving the builder's type safety
-- `src/utils.ts` — `typeCoercer()` for string→typed conversion, `requireFrom{Given,When,Then}()` for runtime dep validation
+- `src/utils.ts` — `requireFrom{Given,When,Then}()` for runtime required-dependency validation
+
+#### Runtime (`src/runtime/`)
+
+- `registry.ts` — `StepRegistry` and the `globalRegistry` singleton. Steps register here; the engine reads from here.
+- `engine.ts` — `runScenario(scenario, registry, makeWorld)`: matches each Gherkin step via a `CucumberExpression` (strict — undefined and ambiguous both throw), hands parsers the **raw** captured text (`arg.group.value`), runs the step against a fresh world per scenario, and skips remaining steps after the first failure.
+- `vitest.ts` — `stepForge()` Vite/Vitest plugin (transforms each `.feature` into a native Vitest test module) and the `defineStepForgeConfig()` one-line config preset.
+- `index.ts` — the `@step-forge/step-forge/runtime` barrel (runner-agnostic core for building other adapters).
 
 ### Testing
 
-Tests use Cucumber.js itself (self-testing). Feature files in `features/` with step definitions in `features/steps/` exercise the library. Type-safety tests in `test/` use `@ts-expect-error` annotations — they validate at `tsc` compile time, not at runtime.
+Tests run through the **Vitest plugin** (`src/runtime/vitest.ts`), configured in `vitest.config.ts` via `defineStepForgeConfig`. The plugin compiles each `.feature` file into a Vitest test module (feature → `describe`, scenario → `test`), injecting `import`s of the step-definition modules so they self-register. Each scenario is a native Vitest task, so watch mode / `--ui` / filtering / coverage all work.
 
-#### Test Scripts
+Type-safety tests use `@ts-expect-error` annotations validated at `tsc` compile time (`npm run build` runs `tsc --noEmit`), not at runtime.
 
-| Script | Profile | Description |
-|---|---|---|
-| `npm test` | `all` | Run all tests. Suppresses stderr (`2> /dev/null`) for clean output. Use this for normal development. |
-| `npm run test:debug` | `all` | Run all tests with full output (stderr included). Use this when a test fails and you need stack traces or error details. |
-| `npm run test:cucumber` | `default` | Run tests using the `default` Cucumber profile. Same paths as `all`, but does not set `PORT` or `LOG_LEVEL`. |
-| `npm run test:ci` | `ci` | CI-oriented profile. Does not import `src/**/*.ts` (only step defs). Enables `publish`. |
+**Current coverage is `features/basic.feature` only.** `vitest.config.ts` scopes the plugin to `features/basic.feature` + `features/steps/commonSteps.ts`. The other feature files are not yet wired into the native runner:
 
-All profiles run with `parallel: 1` and use `tsx` as the TypeScript loader via `NODE_OPTIONS='--import tsx'`.
+- `features/exported.feature` / `placeholders.feature` — builder-pattern demos (IDE-integration examples); not currently executed.
+- `features/analyzer/**` and `features/steps/analyzerSteps.ts` — the analyzer's self-tests, still written against raw `@cucumber/cucumber` `Given/When/Then` and **not yet ported** to the native runner.
 
-There is no way to run a single test file. To run a subset, use Cucumber tags or modify the feature files temporarily.
+Migrating these into the Vitest plugin (and porting `analyzerSteps.ts` off raw Cucumber) is outstanding follow-up work. `cucumber.mjs` and the residual `@cucumber/cucumber` dependency remain only for those un-ported paths.
 
-#### Analyzer Tests
+In-repo, `vitest.config.ts` passes a `runtimeModule` override pointing at `src/runtime/index.ts` so the generated tests and the builders resolve the **same** `globalRegistry` from source. Consumers never need this.
 
-The analyzer has its own test suite under `features/analyzer/` that tests the `analyze()` API against fixture files. The fixtures are **data** — they are read by the analyzer's extractor and parser, not executed by Cucumber.
+### Analyzer
 
-```
-features/analyzer/
-  analyzer.feature                ← Test scenarios (run by Cucumber)
-  fixtures/
-    steps.ts                      ← Fixture step definitions (read by extractor as data)
-    valid-no-deps.feature         ← Fixture feature files (read by parser as data)
-    valid-deps.feature
-    missing-given-dep.feature
-    ...
-```
-
-The `cucumber.mjs` config uses non-recursive path globs (`./features/*.feature`, `./features/analyzer/*.feature`) to ensure fixture files in `features/analyzer/fixtures/` are never executed as tests.
-
-Step definitions in `features/steps/analyzerSteps.ts` provide these steps:
-
-- `Given step definitions from {string}` — sets the fixture step file (relative to `fixtures/`)
-- `Given a feature file {string}` — sets the fixture feature file (relative to `fixtures/`)
-- `When I analyze the files` — calls `analyze()` with the configured files
-- `Then there should be no errors` — asserts zero errors
-- `Then there should be {int} error/errors` — asserts exact error count
-- `Then an error should mention {string}` — asserts an error message contains the substring
-
-#### Adding New Analyzer Tests
-
-1. **If you need new step definition patterns**, add builder calls to `features/analyzer/fixtures/steps.ts`. This file is only parsed by the TypeScript AST extractor — it is never executed, but it must be valid TypeScript that compiles.
-
-2. **Create a fixture feature file** in `features/analyzer/fixtures/` that uses the step expressions defined in `steps.ts`. This file is parsed by the Gherkin parser as data — Cucumber never runs it.
-
-3. **Add a scenario** to `features/analyzer/analyzer.feature`:
-   ```gherkin
-   Scenario: Description of what you're testing
-     Given step definitions from "steps.ts"
-     Given a feature file "your-new-fixture.feature"
-     When I analyze the files
-     Then there should be no errors
-   ```
-   The Background already provides `step definitions from "steps.ts"`, so you only need the `Given a feature file` line in each scenario.
-
-4. **Run `npm run test:debug`** to verify. Use `test:debug` instead of `npm test` so you can see error details if something fails.
+The analyzer (`src/analyzer/`) statically checks `.feature` files against step definitions without running them. It parses features with `@cucumber/gherkin` (`gherkinParser.ts`), extracts step metadata from TypeScript source via the AST (`stepExtractor.ts`, keyed off the terminal `.step(...)` call), matches them (`stepMatcher.ts`), and runs rules (`rules/`). Exposed as the `analyze()` API (`@step-forge/step-forge/analyzer`) and the `step-forge-analyze` CLI.
 
 ### Build Output
 
-`tsdown` (configured in `tsdown.config.ts`, powered by rolldown) produces both the JS bundles and the bundled type declarations in one pass: ESM + CJS for the main entry (`dist/step-forge.js` / `.cjs` with `dist/step-forge.d.ts` / `.d.cts`), and ESM for the analyzer library and CLI (`dist/analyzer.js`, `dist/analyzer-cli.js`). Dependencies and `node:` builtins are externalized automatically. The `build/` directory contains the publishable package.
+`tsdown` (configured in `tsdown.config.ts`, powered by rolldown) produces JS bundles and bundled type declarations in one pass. Two build groups:
+
+1. **`step-forge` (main) + `runtime`** — ESM + CJS. Built together **on purpose**: the step registry is emitted as a single shared chunk (`registry-*.js`) so the builders (main entry) and `runScenario` (runtime entry) share the **same** `globalRegistry` instance. Splitting them would silently break registration.
+2. **`analyzer` + `analyzer-cli` + `vitest`** — ESM only.
+
+Dependencies and `node:` builtins are externalized automatically. The `build/` directory is the publishable package.
 
 ## Exports
 
-`givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld` — all from `src/index.ts`.
+- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, and types (`Parser`, `StateFromDependencies`, …). From `src/index.ts`.
+- `@step-forge/step-forge/vitest` — `stepForge()` plugin and `defineStepForgeConfig()` preset.
+- `@step-forge/step-forge/runtime` — `runScenario`, `StepRegistry`, `globalRegistry`, `UndefinedStepError`, `AmbiguousStepError`, and their types.
+- `@step-forge/step-forge/analyzer` — `analyze()` and related APIs.
+
+`vitest` is an optional peer dependency (needed only for the `/vitest` entry).
