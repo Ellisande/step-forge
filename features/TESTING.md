@@ -1,19 +1,17 @@
 # Testing
 
-All tests use Cucumber.js in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library.
+All tests run natively under **Vitest** in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library. The `stepForge()` plugin (`src/runtime/vitest.ts`) compiles each `.feature` into a Vitest test module; there is no Cucumber.js runtime involved.
 
 ## Test Scripts
 
-| Script                  | Profile   | Description                                                                                                         |
-| ----------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
-| `npm test`              | `all`     | Run all tests. Suppresses stderr for clean output. Use for normal development.                                      |
-| `npm run test:debug`    | `all`     | Run all tests with full output (stderr included). Use when a test fails and you need stack traces or error details. |
-| `npm run test:cucumber` | `default` | Same paths as `all`, but does not set `PORT` or `LOG_LEVEL`.                                                        |
-| `npm run test:ci`       | `ci`      | CI-oriented profile. Does not import `src/**/*.ts` (only step defs). Enables `publish`.                             |
+| Script               | Description                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm test`           | Run all feature tests once (`vitest run`). Use for normal development.                             |
+| `npm run test:watch` | Vitest watch mode.                                                                                 |
+| `npm run test:debug` | Single run with the verbose reporter (per-scenario output). Use when you need per-step detail.     |
+| `npm run test:ci`    | Single run (CI).                                                                                   |
 
-All profiles run with `parallel: 1` and use `tsx` as the TypeScript loader.
-
-There is no way to run a single test file. To run a subset, use Cucumber tags or modify the feature files temporarily.
+Run a subset with Vitest's normal filtering: `npx vitest run features/basic.feature` (by file) or `npx vitest run -t "part of the scenario name"` (by name).
 
 ## Directory Structure
 
@@ -24,13 +22,15 @@ features/
   steps/
     commonSteps.ts                ← Step defs for basic.feature
     exportedSteps.ts              ← Step defs for exported.feature
-    analyzerSteps.ts              ← Step defs for analyzer tests
-    world.ts                      ← World state types
+    analyzerSteps.ts              ← Step defs for analyzer tests (native builders)
+    analyzerWorld.ts              ← World state types for the analyzer tests
+    makeWorld.ts                  ← World factory for the native runtime
+    world.ts                      ← World state types for basic.feature
   analyzer/
-    analyzer.feature              ← Analyzer test scenarios (run by Cucumber)
+    analyzer.feature              ← Analyzer test scenarios (run by the native runner)
     fixtures/
-      steps.ts                    ← Fixture step definitions (data, NOT run by Cucumber)
-      valid-no-deps.feature       ← Fixture feature files (data, NOT run by Cucumber)
+      steps.ts                    ← Fixture step definitions (data, NOT executed)
+      valid-no-deps.feature       ← Fixture feature files (data, NOT executed as tests)
       valid-deps.feature
       ...
 ```
@@ -43,9 +43,9 @@ Type-safety tests in `test/` use `@ts-expect-error` annotations and validate at 
 
 ## Analyzer Tests
 
-The analyzer test suite under `features/analyzer/` tests the `analyze()` API against fixture files. The key distinction: **fixture files are data, not tests**. The analyzer's extractor reads `fixtures/steps.ts` as a TypeScript AST, and the parser reads `fixtures/*.feature` as Gherkin data. Cucumber never executes them.
+The analyzer test suite under `features/analyzer/` tests the `analyze()` API against fixture files. The key distinction: **fixture files are data, not tests**. The analyzer's extractor reads `fixtures/steps.ts` as a TypeScript AST, and the parser reads `fixtures/*.feature` as Gherkin data. The runner never executes them.
 
-The `cucumber.mjs` config uses non-recursive path globs (`./features/*.feature`, `./features/analyzer/*.feature`) so fixture files in `features/analyzer/fixtures/` are excluded from Cucumber's test discovery.
+`vitest.config.ts` lists `features` as **exact** file paths (`features/basic.feature`, `features/analyzer/analyzer.feature`) rather than a recursive glob, so fixture files in `features/analyzer/fixtures/` are never discovered as scenarios. The analyzer steps live in `features/steps/analyzerSteps.ts`, built with the same `givenBuilder`/`whenBuilder`/`thenBuilder` as any other steps — the two `Given`s record the fixture paths in world state, `When I analyze the files` runs `analyze()` and produces the diagnostics, and each `Then` reads them from `when.diagnostics`.
 
 ### Available Steps
 

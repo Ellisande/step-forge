@@ -14,8 +14,12 @@ export interface StepForgeOptions {
    * `BasicWorld`.
    */
   world?: string;
-  /** Feature-file glob to register as test files. Defaults to `**​/*.feature`. */
-  features?: string;
+  /**
+   * Feature-file glob(s) to register as test files. Defaults to
+   * `**​/*.feature`. Accepts an array to scope several exact files or patterns
+   * (e.g. running real features while excluding analyzer fixtures).
+   */
+  features?: string | string[];
   /**
    * Advanced: module specifier the generated tests import the runtime from.
    * Defaults to the published `@step-forge/step-forge/runtime` entry; override
@@ -46,6 +50,10 @@ const DEFAULT_FEATURES = "**/*.feature";
 const DEFAULT_RUNTIME_MODULE = "@step-forge/step-forge/runtime";
 const DEFAULT_CORE_MODULE = "@step-forge/step-forge";
 
+function toArray<T>(value: T | T[]): T[] {
+  return Array.isArray(value) ? value : [value];
+}
+
 function toSpecifier(p: string): string {
   // Absolute filesystem paths must be POSIX-style for the generated imports;
   // bare package specifiers are emitted verbatim.
@@ -74,7 +82,7 @@ async function resolveSteps(
  * (b) Vite's HMR graph invalidates the feature test when a step file changes.
  */
 export function stepForge(options: StepForgeOptions = {}): VitePlugin {
-  const featuresGlob = options.features ?? DEFAULT_FEATURES;
+  const featuresGlobs = toArray(options.features ?? DEFAULT_FEATURES);
   const stepsGlob = options.steps ?? DEFAULT_STEPS;
   const runtimeModule = options.runtimeModule ?? DEFAULT_RUNTIME_MODULE;
   const coreModule = options.coreModule ?? DEFAULT_CORE_MODULE;
@@ -84,7 +92,7 @@ export function stepForge(options: StepForgeOptions = {}): VitePlugin {
     name: "step-forge",
     enforce: "pre",
     config() {
-      return { test: { include: [featuresGlob] } };
+      return { test: { include: featuresGlobs } };
     },
     configResolved(config) {
       root = config.root;
@@ -155,9 +163,9 @@ export function defineStepForgeConfig(
   options: StepForgeOptions & { test?: Record<string, unknown> } = {}
 ) {
   const { test, ...pluginOptions } = options;
-  const featuresGlob = pluginOptions.features ?? DEFAULT_FEATURES;
+  const featuresGlobs = toArray(pluginOptions.features ?? DEFAULT_FEATURES);
   return {
     plugins: [stepForge(pluginOptions)],
-    test: { include: [featuresGlob], ...test },
+    test: { include: featuresGlobs, ...test },
   };
 }

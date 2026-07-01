@@ -16,7 +16,6 @@ npm install @step-forge/step-forge
 
 ```ts
 // features/steps/world.ts
-import { setWorldConstructor } from "@cucumber/cucumber";
 import { BasicWorld } from "@step-forge/step-forge";
 
 export interface GivenState {
@@ -29,7 +28,9 @@ export interface WhenState {
 
 export interface ThenState {}
 
-setWorldConstructor(BasicWorld<GivenState, WhenState, ThenState>);
+// The native runtime creates one fresh world per scenario. With the Vitest
+// plugin, point `world` at a module that default-exports this factory.
+export default () => new BasicWorld<GivenState, WhenState, ThenState>();
 ```
 
 ### Defining Steps

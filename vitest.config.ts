@@ -9,8 +9,10 @@ const runtimeModule = fileURLToPath(
 );
 
 export default defineStepForgeConfig({
-  steps: ["features/steps/commonSteps.ts"],
+  steps: ["features/steps/commonSteps.ts", "features/steps/analyzerSteps.ts"],
   world: "features/steps/makeWorld.ts",
-  features: "features/basic.feature",
+  // Exact files, so the analyzer's own `fixtures/*.feature` (which are *inputs*
+  // to `analyze()`, not tests) are never picked up as scenarios.
+  features: ["features/basic.feature", "features/analyzer/analyzer.feature"],
   runtimeModule,
 });

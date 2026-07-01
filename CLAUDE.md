@@ -62,12 +62,11 @@ Tests run through the **Vitest plugin** (`src/runtime/vitest.ts`), configured in
 
 Type-safety tests use `@ts-expect-error` annotations validated at `tsc` compile time (`npm run build` runs `tsc --noEmit`), not at runtime.
 
-**Current coverage is `features/basic.feature` only.** `vitest.config.ts` scopes the plugin to `features/basic.feature` + `features/steps/commonSteps.ts`. The other feature files are not yet wired into the native runner:
+`vitest.config.ts` runs two feature files through the native runner: `features/basic.feature` (steps in `features/steps/commonSteps.ts`) and `features/analyzer/analyzer.feature`, the analyzer's own self-tests (steps in `features/steps/analyzerSteps.ts`, which drive the `analyze()` API and flow diagnostics through world state like any other scenario). `features` is a list of **exact** files so the analyzer's `fixtures/*.feature` — which are *inputs* to `analyze()`, not tests — are never discovered as scenarios.
+
+The project no longer depends on the `@cucumber/cucumber` runtime at all; every path runs natively under Vitest. Remaining un-wired files are demos only:
 
 - `features/exported.feature` / `placeholders.feature` — builder-pattern demos (IDE-integration examples); not currently executed.
-- `features/analyzer/**` and `features/steps/analyzerSteps.ts` — the analyzer's self-tests, still written against raw `@cucumber/cucumber` `Given/When/Then` and **not yet ported** to the native runner.
-
-Migrating these into the Vitest plugin (and porting `analyzerSteps.ts` off raw Cucumber) is outstanding follow-up work. `cucumber.mjs` and the residual `@cucumber/cucumber` dependency remain only for those un-ported paths.
 
 In-repo, `vitest.config.ts` passes a `runtimeModule` override pointing at `src/runtime/index.ts` so the generated tests and the builders resolve the **same** `globalRegistry` from source. Consumers never need this.
 
