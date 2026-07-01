@@ -62,20 +62,19 @@ export const addStep =
     const parsers =
       declaredParsers ?? Array.from({ length: argCount }, () => stringParser);
     const expression = statementFunction(
-      ...parsers.map(parser => parser.gherkin)
+      ...parsers.map(parser => `{${parser.name}}`)
     );
     // The fully-wired step body, decoupled from any test runner: takes an
-    // explicit world plus the raw values captured from a Gherkin step, applies
-    // parsers + dependency narrowing, runs the user's step, and merges the
-    // result. Both the Cucumber adapter and the native runtime call this.
+    // explicit world plus the values captured from a Gherkin step, validates +
+    // narrows dependencies, runs the user's step, and merges the result. The
+    // captured values arrive already coerced — each parser is registered as the
+    // cucumber-expression parameter type, so `parse` runs during matching, not
+    // here.
     const execute = async (
       world: MergeableWorld<GivenState, WhenState, ThenState>,
-      rawArgs: unknown[]
+      capturedArgs: unknown[]
     ) => {
-      // Each raw value captured from the Gherkin step is coerced by its parser.
-      const coercedArgs = parsers.map((parser, index) =>
-        parser.parse(rawArgs[index] as string)
-      );
+      const coercedArgs = capturedArgs;
       const requiredGivenKeys = Object.entries(givenDependencies ?? {})
         .filter(([, value]) => value === "required")
         .map(([key]) => key);

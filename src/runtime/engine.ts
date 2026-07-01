@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   CucumberExpression,
+  ParameterType,
   ParameterTypeRegistry,
 } from "@cucumber/cucumber-expressions";
 import { ParsedScenario, ParsedStep } from "../analyzer/types";
@@ -41,11 +42,29 @@ export class AmbiguousStepError extends Error {
 }
 
 function compile(registry: StepRegistry): CompiledStep[] {
-  const paramRegistry = new ParameterTypeRegistry();
-  return registry.all().map(step => ({
-    step,
-    expression: new CucumberExpression(step.expression, paramRegistry),
-  }));
+  return registry.all().map(step => {
+    // Each step gets its own parameter-type registry (seeded with the
+    // built-ins). A parser whose name is already registered — the built-in
+    // `{int}`/`{float}`/`{string}`, or a repeat within the same step — reuses
+    // that type; a novel name (e.g. `{boolean}`, `{color}`) is registered from
+    // the parser's regexp + parse, so matching and coercion happen in one pass.
+    const paramRegistry = new ParameterTypeRegistry();
+    for (const parser of step.parsers) {
+      if (paramRegistry.lookupByTypeName(parser.name)) continue;
+      const regexps = Array.isArray(parser.regexp)
+        ? parser.regexp
+        : [parser.regexp];
+      paramRegistry.defineParameterType(
+        new ParameterType(parser.name, regexps, null, (value: string) =>
+          parser.parse(value)
+        )
+      );
+    }
+    return {
+      step,
+      expression: new CucumberExpression(step.expression, paramRegistry),
+    };
+  });
 }
 
 /**
@@ -65,11 +84,10 @@ function matchStep(
     if (def.stepType !== expectedType) continue;
     const result = expression.match(step.text);
     if (result) {
-      // Hand the parsers the *raw* matched text (e.g. `"USD"` with quotes) and
-      // let them own coercion, rather than using the expression's own type
-      // transform. The placeholder still drives matching; the parser drives
-      // the value.
-      matches.push({ step: def, args: result.map(a => a.group.value) });
+      // The parsers are registered as the expression's parameter types, so the
+      // captured values are already coerced (`{int}` → number, `{color}` → the
+      // parser's T). `execute` consumes them as-is.
+      matches.push({ step: def, args: result.map(a => a.getValue(null)) });
     }
   }
 

@@ -29,7 +29,7 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 ```
 
 - **Statement**: A string or function. Functions define variables via parameters: `(name: string) => \`a user named ${name}\`` — each parameter becomes a placeholder in the step expression (`{string}` by default, or the placeholder of the matching parser).
-- **Parsers**: Optional, one per variable. A `Parser<T>` declares the expression placeholder (`gherkin`, e.g. `{int}`) that drives matching, and a `parse` that coerces the **raw matched text** into `T`. Parsers own coercion end to end — e.g. `stringParser` strips the surrounding quotes, `intParser` parses the bare digits. Default is `stringParser` for every variable.
+- **Parsers**: Optional, one per variable. A `Parser<T>` is a cucumber-expression *parameter type*: `{ name, regexp, parse }`. `name` drives the placeholder (`{name}`), `regexp` is how the value is recognised in step text, and `parse` transforms the match into `T`. The engine registers each parser into the expression's `ParameterTypeRegistry`, so matching and coercion happen in one pass (`parse` runs during matching, not after). This lets a parser introduce a novel placeholder like `{color}` that genuinely constrains matching. Built-in-named parsers (`{int}`/`{float}`/`{string}`) defer to cucumber's own built-in types. Default is `stringParser` for every variable.
 - **Dependencies**: Declare which keys from other phases' state this step needs. Keys are marked `"required"` or `"optional"`. Required deps are validated at runtime; optional ones may be `undefined`.
 - **Step function**: Receives `{ variables, given, when, then }` — only the phases allowed by the builder type are accessible (given steps can't access when/then state).
 - **`.step(fn)` registers.** Calling `.step()` is the terminal action: it adds the step to the runtime registry (`globalRegistry`) and returns the step metadata (`{ statement, expression, dependencies, stepType, stepFunction }`). There is no `.register()` — calling `.step()` on a partial chain both builds and registers, so building a step purely to inspect its `.expression` also registers it.
@@ -44,7 +44,7 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 
 - `src/common.ts` — `addStep()`: builds the step `expression` from the statement + parsers, wires the `execute(world, rawArgs)` body (parser coercion, dependency validation/narrowing, state merge), and registers into `globalRegistry` on `.step()`.
 - `src/given.ts`, `src/when.ts`, `src/then.ts` — Builder implementations with phase-specific type constraints
-- `src/parsers.ts` — `Parser<T>` (`{ gherkin, parse }`) plus builtins: `stringParser` (`{string}`, strips quotes), `intParser` (`{int}`), `numberParser` (`{float}`), `booleanParser` (`{word}`)
+- `src/parsers.ts` — `Parser<T>` (`{ name, regexp, parse }`, a cucumber-expression parameter type) plus builtins: `stringParser` (`{string}`, strips quotes), `intParser` (`{int}`), `numberParser` (`{float}`), `booleanParser` (custom `{boolean}`, matches `true`/`false`)
 - `src/world.ts` — `BasicWorld<Given, When, Then>` with `MergeableWorldState` (lodash deep merge, arrays concatenate)
 - `src/builderTypeUtils.ts` — TypeScript utility types driving the builder's type safety
 - `src/utils.ts` — `requireFrom{Given,When,Then}()` for runtime required-dependency validation

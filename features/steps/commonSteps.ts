@@ -1,15 +1,23 @@
 import { givenBuilder } from "../../src/given";
 import { whenBuilder } from "../../src/when";
 import { thenBuilder } from "../../src/then";
-import { intParser, stringParser } from "../../src/parsers";
+import { intParser, stringParser, Parser } from "../../src/parsers";
 import {
   beforeFeature,
   beforeScenario,
   afterScenario,
   beforeAll,
 } from "../../src/hooks";
-import { GivenState, ThenState, WhenState } from "./world";
+import { Color, GivenState, ThenState, WhenState } from "./world";
 import { expect } from "earl";
+
+// A custom parser introducing a brand-new `{color}` placeholder: only
+// `red|green|blue` match, so anything else is an undefined step at match time.
+const colorParser: Parser<Color> = {
+  name: "color",
+  regexp: /red|green|blue/,
+  parse: raw => raw as Color,
+};
 
 // --- Hooks (side-effect only; observed by the scenario below) --- //
 let globalStarted = false;
@@ -136,6 +144,21 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ variables: [amount], when: { deposit } }) => {
     expect(deposit.amount).toEqual(amount);
     expect(typeof deposit.amount).toEqual("number");
+  });
+
+// --- Custom parser (novel {color} placeholder) --- //
+
+givenBuilder<GivenState>()
+  .statement((color: Color) => `my favorite color is ${color}`)
+  .parsers([colorParser])
+  .step(({ variables: [color] }) => ({ favoriteColor: color }));
+
+thenBuilder<GivenState, WhenState, ThenState>()
+  .statement((color: Color) => `the favorite color is ${color}`)
+  .parsers([colorParser])
+  .dependencies({ given: { favoriteColor: "required" } })
+  .step(({ variables: [color], given: { favoriteColor } }) => {
+    expect(favoriteColor).toEqual(color);
   });
 
 // --- Hook observation step --- //

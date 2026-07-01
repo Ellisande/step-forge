@@ -1,8 +1,11 @@
+export type Color = "red" | "green" | "blue";
+
 export interface GivenState {
   user: {
     type: string;
     token: string;
   };
+  favoriteColor: Color;
 }
 
 export interface WhenState {
