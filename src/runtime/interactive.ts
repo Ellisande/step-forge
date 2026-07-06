@@ -8,14 +8,16 @@ import { Prompt, Suggestion } from "./prompt";
 import { watchFeatures, Watcher } from "./watcher";
 
 /**
- * A population the user can pick and run: a whole tag, a whole feature file, or
- * a single scenario. Resolved against the freshly-parsed features on every run,
- * so it survives edits that shift line numbers.
+ * A population the user can pick and run: a whole tag, a whole feature file, a
+ * single scenario, or a whole scenario outline (all its example rows). Scenarios
+ * and outlines are keyed by name — an outline is one choice that runs every row —
+ * so selection is stable across edits that shift line numbers. Resolved against
+ * the freshly-parsed features on every run.
  */
 type Choice =
   | { kind: "tag"; tag: string }
   | { kind: "feature"; file: string; name: string }
-  | { kind: "scenario"; file: string; name: string; line?: number };
+  | { kind: "scenario"; file: string; name: string };
 
 const useColor =
   !process.env.NO_COLOR && (process.stdout.isTTY ?? false) === true;
@@ -192,7 +194,7 @@ class InteractiveSession {
     const single = selected.length === 1;
     if (single) await this.analyzeScenario(selected[0]);
 
-    await this.spawnRun(runArgs(choice, selected[0], single, this.config));
+    await this.spawnRun(runArgs(choice, single, this.config));
   }
 
   /** Every scenario across the current catalog, flattened. */
@@ -301,20 +303,19 @@ function buildSuggestions(catalog: ParsedFeature[]): Suggestion[] {
       } satisfies Choice,
     });
 
+    // Each row of a scenario outline shares the outline's name; collapse them
+    // into a single choice (selected by the outline name, which runs every row)
+    // rather than one entry per row. Regular scenarios stay one entry each.
+    const seen = new Set<string>();
     for (const scenario of feature.scenarios) {
-      const scenarioName = scenario.outline
-        ? `${scenario.outline.name} › ${scenario.name}`
-        : scenario.name;
+      const name = scenario.outline ? scenario.outline.name : scenario.name;
+      if (seen.has(name)) continue;
+      seen.add(name);
       suggestions.push({
-        badge: "scenario",
-        label: scenarioName,
-        search: `${featureLabel} ${scenarioName}`.toLowerCase(),
-        value: {
-          kind: "scenario",
-          file: scenario.file,
-          name: scenario.name,
-          line: scenario.line,
-        } satisfies Choice,
+        badge: scenario.outline ? "outline" : "scenario",
+        label: name,
+        search: `${featureLabel} ${name}`.toLowerCase(),
+        value: { kind: "scenario", file: scenario.file, name } satisfies Choice,
       });
     }
   }
@@ -333,11 +334,12 @@ function resolveScenarios(
     case "feature":
       return scenarios.filter(s => s.file === choice.file);
     case "scenario":
+      // Matches a regular scenario by its name, or every row of an outline by
+      // the shared outline name — mirroring the runner's `-n` (name || outline).
       return scenarios.filter(
         s =>
           s.file === choice.file &&
-          s.name === choice.name &&
-          (choice.line === undefined || s.line === choice.line)
+          (s.name === choice.name || s.outline?.name === choice.name)
       );
   }
 }
@@ -360,12 +362,12 @@ function choiceLabel(choice: Choice): string {
  * narrow to the chosen population:
  *   - tag → all configured features, filtered by `-t <tag>`
  *   - feature → that single feature file
- *   - scenario → that feature file, name-anchored with `-n "/^…$/"`
+ *   - scenario → that feature file, name-anchored with `-n "/^…$/"` (the name is
+ *     the outline name for an outline, so all its rows run)
  * A single scenario runs verbose; a population uses the configured reporter.
  */
 function runArgs(
   choice: Choice,
-  first: ParsedScenario,
   single: boolean,
   config: ResolvedConfig
 ): string[] {
@@ -382,7 +384,7 @@ function runArgs(
       args.push(choice.file);
       break;
     case "scenario":
-      args.push(choice.file, "-n", `/^${escapeRegExp(first.name)}$/`);
+      args.push(choice.file, "-n", `/^${escapeRegExp(choice.name)}$/`);
       break;
   }
 

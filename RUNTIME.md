@@ -145,7 +145,8 @@ fails, so it drops straight into CI.
 
 `step-forge -i` opens a Claude-Code-style typeahead prompt and watches your
 feature/step directories. Start typing to filter every **tag**, **feature**, and
-**scenario** in your suite; `↑`/`↓` move the highlight.
+**scenario** in your suite; `↑`/`↓` move the highlight. A **scenario outline**
+appears as a single entry that runs all of its example rows.
 
 ```bash
 step-forge -i                 # browse and pick from everything
