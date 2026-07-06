@@ -4,6 +4,8 @@ Step Forge is a typed wrapper around the Cucumber library. It provides an opinio
 
 This is just a primer, see the [official documentation site](https://step-forge.com) for more information.
 
+To run your `.feature` files against these steps, see the **[Runtime guide](./RUNTIME.md)** — configuration, the `step-forge` CLI, hooks, filtering, and concurrency.
+
 ## Installation
 
 ```bash

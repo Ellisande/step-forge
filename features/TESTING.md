@@ -1,17 +1,17 @@
 # Testing
 
-All tests run natively under **Vitest** in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library. The `stepForge()` plugin (`src/runtime/vitest.ts`) compiles each `.feature` into a Vitest test module; there is no Cucumber.js runtime involved.
+All tests run natively under **Bun** in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library, executed by the native runner (`src/runtime/cli.ts`) configured via `step-forge.config.ts`. There is no Vitest and no Cucumber.js runtime involved. Runtime internals also have `bun:test` unit tests (`src/runtime/*.test.ts`).
 
 ## Test Scripts
 
-| Script               | Description                                                                                        |
-| -------------------- | ------------------------------------------------------------------------------------------------- |
-| `npm test`           | Run all feature tests once (`vitest run`). Use for normal development.                             |
-| `npm run test:watch` | Vitest watch mode.                                                                                 |
-| `npm run test:debug` | Single run with the verbose reporter (per-scenario output). Use when you need per-step detail.     |
-| `npm run test:ci`    | Single run (CI).                                                                                   |
+| Script                  | Description                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `npm test`              | Runtime unit tests (`bun test`) then all feature tests (the Bun runner). Normal development. |
+| `npm run test:unit`     | Runtime unit tests only (`bun test src/runtime`).                                            |
+| `npm run test:features` | Feature tests only (`bun src/runtime/cli.ts`). The default `pretty` reporter shows per-step detail. |
+| `npm run test:ci`       | Alias for `npm test`.                                                                        |
 
-Run a subset with Vitest's normal filtering: `npx vitest run features/basic.feature` (by file) or `npx vitest run -t "part of the scenario name"` (by name).
+Run a subset by passing globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
 
 ## Directory Structure
 
@@ -45,7 +45,7 @@ Type-safety tests in `test/` use `@ts-expect-error` annotations and validate at 
 
 The analyzer test suite under `features/analyzer/` tests the `analyze()` API against fixture files. The key distinction: **fixture files are data, not tests**. The analyzer's extractor reads `fixtures/steps.ts` as a TypeScript AST, and the parser reads `fixtures/*.feature` as Gherkin data. The runner never executes them.
 
-`vitest.config.ts` lists `features` as **exact** file paths (`features/basic.feature`, `features/analyzer/analyzer.feature`) rather than a recursive glob, so fixture files in `features/analyzer/fixtures/` are never discovered as scenarios. The analyzer steps live in `features/steps/analyzerSteps.ts`, built with the same `givenBuilder`/`whenBuilder`/`thenBuilder` as any other steps — the two `Given`s record the fixture paths in world state, `When I analyze the files` runs `analyze()` and produces the diagnostics, and each `Then` reads them from `when.diagnostics`.
+`step-forge.config.ts` lists `features` as **exact** file paths (`features/basic.feature`, `features/tags.feature`, `features/analyzer/analyzer.feature`) rather than a recursive glob, so fixture files in `features/analyzer/fixtures/` are never discovered as scenarios. The analyzer steps live in `features/steps/analyzerSteps.ts`, built with the same `givenBuilder`/`whenBuilder`/`thenBuilder` as any other steps — the two `Given`s record the fixture paths in world state, `When I analyze the files` runs `analyze()` and produces the diagnostics, and each `Then` reads them from `when.diagnostics`.
 
 ### Available Steps
 
@@ -77,7 +77,7 @@ Step definitions in `features/steps/analyzerSteps.ts` provide:
 
    The Background already provides `Given step definitions from "steps.ts"`, so you only need the `Given a feature file` line in each scenario.
 
-4. **Run `npm run test:debug`** to verify. Use `test:debug` instead of `npm test` so you can see error details if something fails.
+4. **Run `npm run test:features`** to verify. The default `pretty` reporter prints each step with pass/fail marks and a `.feature` code frame on failure.
 
 ### Fixture Step Definitions
 

@@ -5,20 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                # Run all feature tests (Vitest, single run)
-npm run test:watch      # Vitest watch mode
-npm run test:debug      # Single run with the verbose reporter (per-scenario output)
-npm run test:ci         # Single run (CI)
+npm test                # Runtime unit tests (bun test) + all feature tests (Bun runner), single run
+npm run test:unit       # Runtime unit tests only  (bun test src/runtime)
+npm run test:features   # Feature tests only        (bun src/runtime/cli.ts)
+npm run test:ci         # Alias for `npm test`
 npm run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
 npm run lint            # ESLint
 npm run format          # Prettier
 ```
 
-To run a subset, use Vitest's normal filtering: `npx vitest run features/basic.feature` (by file) or `npx vitest run -t "part of the scenario name"` (by name).
+The runner requires **Bun** (it runs the TypeScript step files natively). To run a subset, pass feature globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
 
 ## Architecture
 
-Step Forge is a TypeScript library for writing **type-safe Gherkin step definitions** using a builder pattern, with a **native runtime** that executes features under Vitest. It does **not** depend on the Cucumber.js runtime. It does use two standalone Cucumber *libraries*: `@cucumber/gherkin` (+ `@cucumber/messages`) to parse `.feature` files, and `@cucumber/cucumber-expressions` to match step text — but nothing from `@cucumber/cucumber` itself.
+Step Forge is a TypeScript library for writing **type-safe Gherkin step definitions** using a builder pattern, with a **native Bun runtime** (`src/runtime/cli.ts`, the `step-forge` bin) that executes features directly — no Vitest, no Cucumber.js. It does use two standalone Cucumber *libraries*: `@cucumber/gherkin` (+ `@cucumber/messages`) to parse `.feature` files, and `@cucumber/cucumber-expressions` to match step text — but nothing from `@cucumber/cucumber` itself. See `RUNTIME.md` for the consumer-facing runner guide.
 
 ### Builder Chain
 
@@ -52,23 +52,27 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 #### Runtime (`src/runtime/`)
 
 - `registry.ts` — `StepRegistry` and the `globalRegistry` singleton. Steps register here; the engine reads from here.
-- `engine.ts` — `runScenario(scenario, registry, makeWorld)`: matches each Gherkin step via a `CucumberExpression` (strict — undefined and ambiguous both throw), hands parsers the **raw** captured text (`arg.group.value`), runs the step against a fresh world per scenario, and skips remaining steps after the first failure.
-- `vitest.ts` — `stepForge()` Vite/Vitest plugin (transforms each `.feature` into a native Vitest test module) and the `defineStepForgeConfig()` one-line config preset.
+- `engine.ts` — `compileRegistry(registry)` compiles the step expressions **once** per run; `runScenario(scenario, compiled, makeWorld)` matches each Gherkin step via a `CucumberExpression` (strict — undefined and ambiguous both throw during matching), runs it against a fresh world per scenario, skips remaining steps after the first failure, and returns a `ScenarioResult`. It **never throws for a test failure** — the first error is attached to the result with a synthetic `.feature` stack frame for reporters to render.
+- `cli.ts` — the `step-forge` CLI (`#!/usr/bin/env bun`): arg parsing, exit codes (`0` pass / `1` fail).
+- `config.ts` — loads `step-forge.config.ts` and merges CLI overrides (`RunnerOptions`).
+- `runner.ts` — discovers + parses features, imports step modules (self-register), compiles once, filters, and runs scenarios through a concurrency-capped pool (serial by default).
+- `filter.ts` — Cucumber tag-expression evaluator + name / `@only` / `@skip` selection.
+- `reporters.ts` — `pretty` (feature tree) and `progress` (dots) reporters.
 - `index.ts` — the `@step-forge/step-forge/runtime` barrel (runner-agnostic core for building other adapters).
 
 ### Testing
 
-Tests run through the **Vitest plugin** (`src/runtime/vitest.ts`), configured in `vitest.config.ts` via `defineStepForgeConfig`. The plugin compiles each `.feature` file into a Vitest test module (feature → `describe`, scenario → `test`), injecting `import`s of the step-definition modules so they self-register. Each scenario is a native Vitest task, so watch mode / `--ui` / filtering / coverage all work.
+Feature tests run under **Bun** via the native runner (`bun src/runtime/cli.ts`, aka `npm run test:features`), configured by `step-forge.config.ts`. The runner parses each `.feature`, imports the step-definition modules so they self-register into `globalRegistry`, compiles the step expressions once, and executes scenarios **serially by default** (raise `--concurrency` to parallelize — safe because scenario state lives only in the per-scenario world). Runtime internals also have `bun:test` unit tests (`src/runtime/*.test.ts`, run via `bun test src/runtime` / `npm run test:unit`); `npm test` runs both.
 
 Type-safety tests use `@ts-expect-error` annotations validated at `tsc` compile time (`npm run build` runs `tsc --noEmit`), not at runtime.
 
-`vitest.config.ts` runs two feature files through the native runner: `features/basic.feature` (steps in `features/steps/commonSteps.ts`) and `features/analyzer/analyzer.feature`, the analyzer's own self-tests (steps in `features/steps/analyzerSteps.ts`, which drive the `analyze()` API and flow diagnostics through world state like any other scenario). `features` is a list of **exact** files so the analyzer's `fixtures/*.feature` — which are *inputs* to `analyze()`, not tests — are never discovered as scenarios.
+`step-forge.config.ts` runs three feature files through the native runner: `features/basic.feature` (steps in `features/steps/commonSteps.ts`), `features/tags.feature`, and `features/analyzer/analyzer.feature`, the analyzer's own self-tests (steps in `features/steps/analyzerSteps.ts`, which drive the `analyze()` API and flow diagnostics through world state like any other scenario). `features` is a list of **exact** files so the analyzer's `fixtures/*.feature` — which are *inputs* to `analyze()`, not tests — are never discovered as scenarios.
 
-The project no longer depends on the `@cucumber/cucumber` runtime at all; every path runs natively under Vitest. Remaining un-wired files are demos only:
+The project no longer depends on the `@cucumber/cucumber` runtime at all; every path runs natively under the Bun runner. Remaining un-wired files are demos only:
 
 - `features/exported.feature` / `placeholders.feature` — builder-pattern demos (IDE-integration examples); not currently executed.
 
-In-repo, `vitest.config.ts` passes a `runtimeModule` override pointing at `src/runtime/index.ts` so the generated tests and the builders resolve the **same** `globalRegistry` from source. Consumers never need this.
+In-repo the runner and the step files both import from `src/` directly (Bun runs the TypeScript sources), so they naturally resolve the **same** `globalRegistry`; there is no build indirection to configure. In the published package the CLI shares one bundled `globalRegistry` chunk with the main entry (see Build Output).
 
 ### Analyzer
 
@@ -78,16 +82,16 @@ The analyzer (`src/analyzer/`) statically checks `.feature` files against step d
 
 `tsdown` (configured in `tsdown.config.ts`, powered by rolldown) produces JS bundles and bundled type declarations in one pass. Two build groups:
 
-1. **`step-forge` (main) + `runtime`** — ESM + CJS. Built together **on purpose**: the step registry is emitted as a single shared chunk (`registry-*.js`) so the builders (main entry) and `runScenario` (runtime entry) share the **same** `globalRegistry` instance. Splitting them would silently break registration.
-2. **`analyzer` + `analyzer-cli` + `vitest`** — ESM only.
+1. **`step-forge` (main) + `runtime` + `cli`** — ESM + CJS. Built together **on purpose**: the step registry is emitted as a single shared chunk so the builders (main entry), `runScenario` (runtime entry), and the `step-forge` CLI (`cli` entry) all share the **same** `globalRegistry` instance. Splitting the CLI out would bundle a second registry and silently break registration for steps a consumer registers via `@step-forge/step-forge`.
+2. **`analyzer` + `analyzer-cli`** — ESM only.
 
 Dependencies and `node:` builtins are externalized automatically. The `build/` directory is the publishable package.
 
 ## Exports
 
-- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, and types (`Parser`, `StateFromDependencies`, …). From `src/index.ts`.
-- `@step-forge/step-forge/vitest` — `stepForge()` plugin and `defineStepForgeConfig()` preset.
-- `@step-forge/step-forge/runtime` — `runScenario`, `StepRegistry`, `globalRegistry`, `UndefinedStepError`, `AmbiguousStepError`, and their types.
+- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, the hooks (`beforeScenario`/`afterScenario`/`beforeFeature`/`afterFeature`/`beforeAll`/`afterAll`), and types (`Parser`, `StateFromDependencies`, …). From `src/index.ts`.
+- `@step-forge/step-forge/runtime` — `runScenario`, `compileRegistry`, `StepRegistry`, `globalRegistry`, `UndefinedStepError`, `AmbiguousStepError`, the `RunnerOptions` type, and their types.
 - `@step-forge/step-forge/analyzer` — `analyze()` and related APIs.
+- Bins: `step-forge` (the feature runner, `src/runtime/cli.ts`) and `step-forge-analyze` (the analyzer CLI). Both run under **Bun**.
 
-`vitest` is an optional peer dependency (needed only for the `/vitest` entry).
+The runner requires **Bun**; `typescript` is an optional peer dependency (for the analyzer's AST extraction).

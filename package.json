@@ -28,25 +28,24 @@
         "default": "./dist/runtime.js"
       }
     },
-    "./vitest": {
-      "types": "./dist/vitest.d.ts",
-      "import": "./dist/vitest.js"
-    },
     "./dist/": {
       "import": "./dist/"
     }
   },
   "bin": {
+    "step-forge": "./dist/cli.js",
     "step-forge-analyze": "./dist/analyzer-cli.js"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "types": "./dist/step-forge.d.ts",
   "scripts": {
-    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md LICENSE.md CHANGELOG.md build/",
-    "test": "vitest run",
+    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md RUNTIME.md LICENSE.md CHANGELOG.md build/",
+    "test": "bun run test:unit && bun run test:features",
     "test:unit": "bun test src/runtime",
-    "test:watch": "vitest",
-    "test:ci": "vitest run",
-    "test:debug": "vitest run --reporter=verbose",
+    "test:features": "bun src/runtime/cli.ts",
+    "test:ci": "bun run test",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"
   },
@@ -62,19 +61,13 @@
     "eslint-plugin-prettier": "^5.2.1",
     "prettier": "^3.3.3",
     "tsdown": "^0.22.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.9"
+    "typescript": "^5.7.2"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0",
-    "vitest": "^3.0.0 || ^4.0.0"
+    "typescript": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "typescript": {
-      "optional": true
-    },
-    "vitest": {
       "optional": true
     }
   },

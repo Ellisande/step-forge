@@ -1,10 +1,10 @@
 import type { RunnerOptions } from "./src/runtime/config";
 
 /**
- * Config for the native Step Forge runner (`bun src/runtime/cli.ts`). Mirrors
- * the `vitest.config.ts` wiring: the same exact feature files (so the analyzer's
- * `fixtures/*.feature`, which are *inputs* to `analyze()`, aren't run as tests)
- * and the same step + world modules.
+ * Config for the native Step Forge runner (`bun src/runtime/cli.ts`, aka
+ * `npm run test:features`). `features` is a list of **exact** files so the
+ * analyzer's `fixtures/*.feature` — which are *inputs* to `analyze()`, not tests
+ * — are never discovered as scenarios.
  */
 const config: RunnerOptions = {
   steps: ["features/steps/commonSteps.ts", "features/steps/analyzerSteps.ts"],

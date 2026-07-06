@@ -91,14 +91,25 @@ Node portability isn't required — unlike consumer-facing code). Run with
 
 ## Backlog (parked — work on later)
 
-### Flip the default runner
-- Point `npm test` at `bun src/runtime/cli.ts`; retire the Vitest dep + plugin
-  (or keep `vitest.ts` as an optional adapter).
+### Flip the default runner — DONE
+- `npm test` now runs `bun test src/runtime` (unit) + `bun src/runtime/cli.ts`
+  (features). Vitest fully removed: deleted `vitest.config.ts` and
+  `src/runtime/vitest.ts`, dropped the `/vitest` package export + its tsdown
+  entry, and removed the `vitest` (and unused `tsx`) dependencies. Docs updated
+  (`CLAUDE.md`, `features/TESTING.md`). `docs/assets/known_gaps.md` is left as a
+  historical decisions log and still references the old Vitest mechanism.
 
-### Publishing wiring
-- `step-forge` bin entry in `package.json`.
-- `tsdown` build group for the CLI (+ reporters/runner/config).
-- Declare the **Bun** dependency/engine requirement.
+### Publishing wiring — DONE
+- `step-forge` bin → `./dist/cli.js` in `package.json`.
+- CLI added to the **same** tsdown build group as `step-forge` + `runtime` (not
+  its own group) so all three share the single `globalRegistry` chunk. Verified:
+  one `new StepRegistry()` in the whole dist; `cli.js`, `step-forge.js`, and
+  `runtime.js` all import the same `hooks-*.js` chunk.
+- `engines.bun >= 1.0.0` declared; the bin shebang is `#!/usr/bin/env bun`.
+- `RunnerOptions` exported from the `/runtime` entry (ships in `runtime.d.ts`).
+- End-to-end verified against a simulated consumer (steps registered through the
+  published `@step-forge/step-forge` import, run via the built bin): passing
+  suite → exit 0, undefined step → exit 1 with a `.feature` code frame.
 
 ### Phase 2 — parity & polish
 - Worker-pool execution mode (ties into the concurrency work above).
