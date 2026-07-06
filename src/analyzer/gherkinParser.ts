@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
-import { GherkinClassicTokenMatcher, Parser, AstBuilder } from "@cucumber/gherkin";
+import {
+  GherkinClassicTokenMatcher,
+  Parser,
+  AstBuilder,
+} from "@cucumber/gherkin";
 import * as messages from "@cucumber/messages";
 import { ParsedScenario, ParsedStep } from "./types.js";
 
@@ -17,16 +21,53 @@ export function parseFeatureFiles(filePaths: string[]): ParsedScenario[] {
   return scenarios;
 }
 
+/**
+ * One parsed feature file: its `Feature:` title (empty if unnamed) plus every
+ * scenario (outline rows expanded). {@link parseFeatureContent} exposes just the
+ * scenarios; {@link parseFeatureCatalog} keeps the title too, for UIs that label
+ * scenarios by their feature.
+ */
+export interface ParsedFeature {
+  file: string;
+  name: string;
+  scenarios: ParsedScenario[];
+}
+
+/** Build a fresh gherkin parser and parse `content` into a document. */
+function parseDocument(content: string): messages.GherkinDocument {
+  const builder = new AstBuilder(messages.IdGenerator.uuid());
+  const matcher = new GherkinClassicTokenMatcher();
+  return new Parser(builder, matcher).parse(content);
+}
+
+/**
+ * Parse feature files into a catalog of `{ file, name, scenarios }`, one entry
+ * per file (one gherkin parse each). Used by interactive mode to offer
+ * feature/scenario names as typeahead choices labelled by their `Feature:` title.
+ */
+export function parseFeatureCatalog(filePaths: string[]): ParsedFeature[] {
+  return filePaths.map(file => {
+    const document = parseDocument(fs.readFileSync(file, "utf-8"));
+    return {
+      file,
+      name: document.feature?.name ?? "",
+      scenarios: documentToScenarios(document, file),
+    };
+  });
+}
+
 export function parseFeatureContent(
   content: string,
   filePath: string
 ): ParsedScenario[] {
-  const newId = messages.IdGenerator.uuid();
-  const builder = new AstBuilder(newId);
-  const matcher = new GherkinClassicTokenMatcher();
-  const parser = new Parser(builder, matcher);
+  return documentToScenarios(parseDocument(content), filePath);
+}
 
-  const gherkinDocument: messages.GherkinDocument = parser.parse(content);
+/** Expand a parsed gherkin document into scenarios (outline rows included). */
+function documentToScenarios(
+  gherkinDocument: messages.GherkinDocument,
+  filePath: string
+): ParsedScenario[] {
   const feature = gherkinDocument.feature;
   if (!feature) return [];
 
@@ -91,7 +132,7 @@ function expandScenario(
   const scenarioTags = [...inheritedTags, ...tagNames(scenario.tags)];
   const hasExamples =
     scenario.examples.length > 0 &&
-    scenario.examples.some((e) => e.tableBody.length > 0);
+    scenario.examples.some(e => e.tableBody.length > 0);
 
   if (!hasExamples) {
     // Regular scenario
@@ -115,22 +156,25 @@ function expandScenario(
   const results: ParsedScenario[] = [];
   for (const example of scenario.examples) {
     if (!example.tableHeader || example.tableBody.length === 0) continue;
-    const headers = example.tableHeader.cells.map((c) => c.value);
+    const headers = example.tableHeader.cells.map(c => c.value);
     const exampleTags = [...scenarioTags, ...tagNames(example.tags)];
 
     for (const row of example.tableBody) {
-      const values = row.cells.map((c) => c.value);
+      const values = row.cells.map(c => c.value);
       const substitution: Record<string, string> = {};
       headers.forEach((h, i) => {
         substitution[h] = values[i];
       });
 
       const bgParsed = convertSteps(backgroundSteps);
-      const scenarioSteps = convertSteps(scenario.steps).map((step) => ({
+      const scenarioSteps = convertSteps(scenario.steps).map(step => ({
         ...step,
         text: substituteExampleValues(step.text, substitution),
       }));
-      const allSteps = resolveEffectiveKeywords([...bgParsed, ...scenarioSteps]);
+      const allSteps = resolveEffectiveKeywords([
+        ...bgParsed,
+        ...scenarioSteps,
+      ]);
 
       results.push({
         name: headers.map((h, i) => `${h}=${values[i]}`).join(", "),
@@ -149,7 +193,7 @@ function expandScenario(
 function convertSteps(
   steps: readonly messages.Step[]
 ): Omit<ParsedStep, "effectiveKeyword">[] {
-  return steps.map((step) => ({
+  return steps.map(step => ({
     keyword: normalizeKeyword(step.keyword),
     text: step.text,
     line: step.location.line,
@@ -178,7 +222,7 @@ function resolveEffectiveKeywords(
 ): ParsedStep[] {
   let lastEffective: "Given" | "When" | "Then" = "Given";
 
-  return steps.map((step) => {
+  return steps.map(step => {
     let effectiveKeyword: "Given" | "When" | "Then";
     if (step.keyword === "And" || step.keyword === "But") {
       effectiveKeyword = lastEffective;

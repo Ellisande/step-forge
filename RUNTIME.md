@@ -125,6 +125,7 @@ Positional arguments are feature globs and **override** the configured
 | `--concurrency <n>`     | `-c`  | Max scenarios in flight (default `1`).                  |
 | `--reporter <name>`     | `-r`  | `pretty` (default) or `progress`.                       |
 | `--verbose`             | `-v`  | Report every scenario, not just failures.               |
+| `--interactive`         | `-i`  | Interactive watch mode (see below). Requires a TTY.     |
 | `--config <path>`       |       | Directory to resolve the config file and globs from.    |
 | `--help`                | `-h`  | Show usage.                                             |
 
@@ -139,6 +140,36 @@ step-forge --concurrency 8 --reporter progress # parallel, compact output
 
 The process exits `0` when every scenario passes and `1` when any scenario
 fails, so it drops straight into CI.
+
+## Interactive mode
+
+`step-forge -i` opens a Claude-Code-style typeahead prompt and watches your
+feature/step directories. Start typing to filter every **tag**, **feature**, and
+**scenario** in your suite; `↑`/`↓` move the highlight.
+
+```bash
+step-forge -i                 # browse and pick from everything
+step-forge -i -t "@smoke"     # open with the query pre-filled
+```
+
+The prompt is always live, with one committed selection (the *armed*
+population):
+
+- **Enter** arms the highlighted choice, runs it immediately, and re-runs it on
+  every subsequent file change. Pressing Enter again forces a re-run.
+- **Editing the query** suspends auto-runs until you press Enter again — so you
+  can retarget without a half-typed selection firing.
+- **Esc** disarms and returns to browsing.
+- **Ctrl-C** quits.
+
+A selection that resolves to a **single scenario** is run in `--verbose` mode and
+first passed through the analyzer so undefined/ambiguous steps and dependency
+problems surface before it runs. Broader populations use your configured
+reporter.
+
+Each run executes in a fresh `step-forge` child process, so edited step
+definitions are always picked up — there is no stale module cache between runs.
+Recursive watching works on macOS, Windows, and modern Linux (Node ≥ 20 / Bun).
 
 ## Hooks
 

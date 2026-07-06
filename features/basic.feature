@@ -15,6 +15,11 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
         When I save the user
         Then there is a user
 
+    Scenario: Brand new super secret step
+        Given a user named "John"
+        When I save the user
+        Then there is a user
+
     Scenario: Basic feature steps with dependencies and variables can be run as a cucumber scenario
         Given a user
         When I name the user "John"

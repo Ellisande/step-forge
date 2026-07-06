@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import * as path from "node:path";
 import { loadConfigFile, resolveConfig, RunnerOptions } from "./config";
 import { run } from "./runner";
+import { runInteractive } from "./interactive";
 
 const HELP = `step-forge — native TypeScript runner for Gherkin step definitions
 
@@ -17,6 +18,8 @@ Options:
   -c, --concurrency <n>    Max scenarios in flight (default: 1, i.e. serial)
   -r, --reporter <name>    "pretty" (default) or "progress"
   -v, --verbose            Report every scenario, not just failures
+  -i, --interactive        Interactive watch mode: pick a tag/feature/scenario
+                           and re-run it on every file change
       --config <path>      Config file directory (default: cwd)
   -h, --help               Show this help
 
@@ -24,7 +27,11 @@ Positional arguments are feature globs and override the configured features.
 `;
 
 /** Parse argv into config overrides. Positional args become feature globs. */
-function parseCli(argv: string[]): { cwd: string; overrides: RunnerOptions } {
+function parseCli(argv: string[]): {
+  cwd: string;
+  overrides: RunnerOptions;
+  interactive: boolean;
+} {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -36,6 +43,7 @@ function parseCli(argv: string[]): { cwd: string; overrides: RunnerOptions } {
       concurrency: { type: "string", short: "c" },
       reporter: { type: "string", short: "r" },
       verbose: { type: "boolean", short: "v" },
+      interactive: { type: "boolean", short: "i" },
       config: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -70,13 +78,17 @@ function parseCli(argv: string[]): { cwd: string; overrides: RunnerOptions } {
   const cwd = values.config
     ? path.resolve(process.cwd(), values.config)
     : process.cwd();
-  return { cwd, overrides };
+  return { cwd, overrides, interactive: values.interactive ?? false };
 }
 
 async function main(): Promise<void> {
-  const { cwd, overrides } = parseCli(process.argv.slice(2));
+  const { cwd, overrides, interactive } = parseCli(process.argv.slice(2));
   const fileConfig = await loadConfigFile(cwd);
   const config = resolveConfig(cwd, fileConfig, overrides);
+  if (interactive) {
+    await runInteractive(config);
+    return; // interactive mode manages its own lifecycle and exit code
+  }
   const { passed } = await run(config);
   process.exitCode = passed ? 0 : 1;
 }
