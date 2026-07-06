@@ -1,5 +1,10 @@
-export { runScenario, UndefinedStepError, AmbiguousStepError } from "./engine";
-export type { ScenarioResult, StepResult } from "./engine";
+export {
+  runScenario,
+  compileRegistry,
+  UndefinedStepError,
+  AmbiguousStepError,
+} from "./engine";
+export type { ScenarioResult, StepResult, CompiledStep } from "./engine";
 
 export { StepRegistry, globalRegistry } from "./registry";
 export type { RegisteredStep, StepType } from "./registry";

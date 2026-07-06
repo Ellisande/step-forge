@@ -27,7 +27,7 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
 
     Scenario: Feature and scenario hooks run around a scenario
         Given I started
-        Then the hooks have run for scenario "Feature and scenario hooks run around a scenario"
+        Then the hooks have run
 
     Scenario: A custom parser introduces a new placeholder type
         Given my favorite color is green

@@ -20,10 +20,17 @@ const colorParser: Parser<Color> = {
 };
 
 // --- Hooks (side-effect only; observed by the scenario below) --- //
+//
+// These module flags are write-once (globalStarted/featureStarted) or monotonic
+// (beforeScenarioRuns), so they're safe to read from any scenario even under
+// concurrent execution. We deliberately do NOT record per-scenario identity
+// (e.g. "the last scenario name") here: a hook seeding mutable state that a step
+// reads back is a cross-scenario data race and violates the framework's
+// contract that scenario state flows only through the isolated world. That
+// hook-plumbing check lives in a runtime unit test instead (hooks.test.ts).
 let globalStarted = false;
 let featureStarted = false;
 let beforeScenarioRuns = 0;
-let lastScenarioName = "";
 // Global runs once per worker, in this same realm, so a module flag is visible
 // to the step below.
 beforeAll(() => {
@@ -32,9 +39,8 @@ beforeAll(() => {
 beforeFeature(() => {
   featureStarted = true;
 });
-beforeScenario(({ scenario }) => {
+beforeScenario(() => {
   beforeScenarioRuns += 1;
-  lastScenarioName = scenario.name;
 });
 afterScenario(() => {
   // Purely a smoke test that after-hooks run without a world contract.
@@ -164,10 +170,9 @@ thenBuilder<GivenState, WhenState, ThenState>()
 // --- Hook observation step --- //
 
 thenBuilder<GivenState, WhenState, ThenState>()
-  .statement((name: string) => `the hooks have run for scenario ${name}`)
-  .step(({ variables: [name] }) => {
+  .statement("the hooks have run")
+  .step(() => {
     expect(globalStarted).toEqual(true);
     expect(featureStarted).toEqual(true);
     expect(beforeScenarioRuns > 0).toEqual(true);
-    expect(lastScenarioName).toEqual(name);
   });

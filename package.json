@@ -43,6 +43,7 @@
   "scripts": {
     "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md LICENSE.md CHANGELOG.md build/",
     "test": "vitest run",
+    "test:unit": "bun test src/runtime",
     "test:watch": "vitest",
     "test:ci": "vitest run",
     "test:debug": "vitest run --reporter=verbose",

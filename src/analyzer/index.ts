@@ -1,11 +1,7 @@
-import { glob } from "node:fs/promises";
-import * as path from "node:path";
+import { globFiles } from "../globFiles.js";
 import { extractStepDefinitions } from "./stepExtractor.js";
 import { parseFeatureFiles, parseFeatureContent } from "./gherkinParser.js";
-import {
-  matchScenarioSteps,
-  findMatchingDefinitions,
-} from "./stepMatcher.js";
+import { matchScenarioSteps, findMatchingDefinitions } from "./stepMatcher.js";
 import { defaultRules, runRules } from "./rules/index.js";
 import type {
   AnalyzerConfig,
@@ -47,8 +43,8 @@ export async function analyze(
   const rules = options?.rules ?? defaultRules;
 
   // 1. Resolve file globs to paths
-  const stepFilePaths = await resolveGlobs(config.stepFiles);
-  const featureFilePaths = await resolveGlobs(config.featureFiles);
+  const stepFilePaths = await globFiles(config.stepFiles);
+  const featureFilePaths = await globFiles(config.featureFiles);
 
   if (stepFilePaths.length === 0) {
     return [];
@@ -75,15 +71,4 @@ export async function analyze(
   }
 
   return diagnostics;
-}
-
-async function resolveGlobs(patterns: string[]): Promise<string[]> {
-  const files: string[] = [];
-  for (const pattern of patterns) {
-    for await (const file of glob(pattern)) {
-      files.push(path.resolve(file));
-    }
-  }
-  // Deduplicate
-  return [...new Set(files)];
 }

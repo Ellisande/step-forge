@@ -16,7 +16,7 @@ const keywordToStepType: Record<ParsedStep["effectiveKeyword"], StepType> = {
 };
 
 /** A registered step paired with its compiled Cucumber expression. */
-interface CompiledStep {
+export interface CompiledStep {
   step: RegisteredStep;
   expression: CucumberExpression;
 }
@@ -41,7 +41,13 @@ export class AmbiguousStepError extends Error {
   }
 }
 
-function compile(registry: StepRegistry): CompiledStep[] {
+/**
+ * Compile a registry's steps into matchable Cucumber expressions **once** per
+ * run. The result is reused for every scenario — compilation is pure and depends
+ * only on the registry, so recompiling per scenario (as an earlier version did)
+ * was wasted work proportional to scenarios × steps.
+ */
+export function compileRegistry(registry: StepRegistry): CompiledStep[] {
   return registry.all().map(step => {
     // Each step gets its own parameter-type registry (seeded with the
     // built-ins). A parser whose name is already registered — the built-in
@@ -112,23 +118,40 @@ export interface ScenarioResult {
   scenario: ParsedScenario;
   status: "passed" | "failed";
   steps: StepResult[];
+  /**
+   * The scenario's first error, if it failed. Usually the same object as the
+   * failing step's `error` (with a synthetic `.feature` stack frame attached),
+   * but for a hook failure there's no step to point at, so this is the only
+   * place it surfaces. Reporters read this; the runner never throws it.
+   */
+  error?: Error;
+  /** Wall-clock duration of the whole scenario, in milliseconds. */
+  durationMs?: number;
 }
 
 /**
- * Run one scenario against a registry. A fresh world is created per scenario
- * (state never leaks between scenarios). On the first failing step the
- * remaining steps are marked skipped, matching Cucumber's execution semantics.
+ * Run one scenario against a pre-compiled step table. A fresh world is created
+ * per scenario (state never leaks between scenarios). On the first failing step
+ * the remaining steps are marked skipped, matching Cucumber's execution
+ * semantics.
  *
- * Throws on failure so it maps cleanly onto a test runner's `test()` body, but
- * the returned/attached `ScenarioResult` carries the per-step breakdown.
+ * Never throws for step or hook failures: it always resolves to a
+ * `ScenarioResult` carrying the per-step breakdown and (on failure) the first
+ * `error` with a synthetic `.feature` stack frame attached. Callers decide what
+ * to do with a failure — the CLI runner reports it, a test-runner adapter can
+ * re-throw `result.error`. It still rejects for truly exceptional conditions
+ * (e.g. a bug in the engine itself), never for a normal test failure.
+ *
+ * Pass the compiled table from {@link compileRegistry} once and reuse it across
+ * every scenario in the run.
  */
 export async function runScenario(
   scenario: ParsedScenario,
-  registry: StepRegistry,
+  compiled: CompiledStep[],
   makeWorld: () => MergeableWorld<any, any, any>,
   hooks: HookRegistry = globalHookRegistry
 ): Promise<ScenarioResult> {
-  const compiled = compile(registry);
+  const start = now();
   const world = makeWorld();
   const scenarioInfo = { name: scenario.name, file: scenario.file };
   const steps: StepResult[] = [];
@@ -176,22 +199,30 @@ export async function runScenario(
     }
   }
 
-  const result: ScenarioResult = {
+  if (failed && firstError) {
+    // Surface the failing Gherkin line as a real stack frame so reporters render
+    // a code frame from the `.feature` file itself. Hook failures have no step
+    // to point at, so they surface with their own stack unchanged.
+    const failing = steps.find(s => s.status === "failed");
+    if (failing) attachFeatureFrame(firstError, scenario.file, failing.step);
+  }
+
+  return {
     scenario,
     status: failed ? "failed" : "passed",
     steps,
+    error: firstError,
+    durationMs: now() - start,
   };
+}
 
-  if (failed && firstError) {
-    // Surface the failing Gherkin line as a real stack frame so the runner
-    // renders a code frame from the `.feature` file itself. Hook failures have
-    // no step to point at, so they surface with their own stack unchanged.
-    const failing = steps.find(s => s.status === "failed");
-    if (failing) attachFeatureFrame(firstError, scenario.file, failing.step);
-    throw firstError;
-  }
-
-  return result;
+/**
+ * Monotonic-ish millisecond clock. `performance.now()` where available (Node &
+ * Bun both expose it globally), falling back to `Date.now()`. Kept in one place
+ * so timing is consistent across scenarios.
+ */
+function now(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 /**

@@ -73,8 +73,12 @@ function testLine(
   indent: string
 ): string {
   return (
-    `${indent}${testFn(scenario.tags)}(${JSON.stringify(scenario.name)}, () => ` +
-    `runScenario(__scenarios[${index}], globalRegistry, __makeWorld));`
+    `${indent}${testFn(scenario.tags)}(${JSON.stringify(
+      scenario.name
+    )}, async () => {\n` +
+    `${indent}  const __r = await runScenario(__scenarios[${index}], __compiled, __makeWorld);\n` +
+    `${indent}  if (__r.status === "failed" && __r.error) throw __r.error;\n` +
+    `${indent}});`
   );
 }
 
@@ -171,13 +175,16 @@ export function stepForge(options: StepForgeOptions = {}): VitePlugin {
 
       const generated = `
 import { describe, test, beforeAll, afterAll } from "vitest";
-import { runScenario, globalRegistry, runHooks, ensureGlobalHooks } from ${JSON.stringify(
+import { runScenario, compileRegistry, globalRegistry, runHooks, ensureGlobalHooks } from ${JSON.stringify(
         runtimeModule
       )};
 ${worldImport}
 ${stepImports}
 
 const __scenarios = ${JSON.stringify(scenarios)};
+// Compile the registry once per feature module; step imports above have all
+// self-registered by the time this top-level runs.
+const __compiled = compileRegistry(globalRegistry);
 
 describe(${JSON.stringify(featureName)}, () => {
   // Global before-hooks fire once per worker, ahead of feature hooks.
