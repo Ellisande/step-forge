@@ -4,14 +4,14 @@ All tests run natively under **Bun** in a self-testing pattern: feature files in
 
 ## Test Scripts
 
-| Script                  | Description                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `npm test`              | Runtime unit tests (`bun test`) then all feature tests (the Bun runner). Normal development. |
-| `npm run test:unit`     | Runtime unit tests only (`bun test src/runtime`).                                            |
-| `npm run test:features` | Feature tests only (`bun src/runtime/cli.ts`). The default `pretty` reporter shows per-step detail. |
-| `npm run test:ci`       | Alias for `npm test`.                                                                        |
+| Script                      | Description                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| `bun run test`              | Runtime unit tests (`bun test`) then all feature tests (the Bun runner). Normal development. |
+| `bun run test:unit`         | Runtime unit tests only (`bun test src/runtime`).                                            |
+| `bun run test:features`     | Feature tests only (`bun src/runtime/cli.ts`). The default `pretty` reporter shows per-step detail. |
+| `bun run test:ci`           | Alias for `bun run test`.                                                                    |
 
-Run a subset by passing globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
+Use `bun run test`, not `bun test` (the latter is Bun's native runner and would skip the feature suite). Run a subset by passing globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
 
 ## Directory Structure
 
@@ -77,7 +77,7 @@ Step definitions in `features/steps/analyzerSteps.ts` provide:
 
    The Background already provides `Given step definitions from "steps.ts"`, so you only need the `Given a feature file` line in each scenario.
 
-4. **Run `npm run test:features`** to verify. The default `pretty` reporter prints each step with pass/fail marks and a `.feature` code frame on failure.
+4. **Run `bun run test:features`** to verify. The default `pretty` reporter prints each step with pass/fail marks and a `.feature` code frame on failure.
 
 ### Fixture Step Definitions
 

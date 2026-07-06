@@ -4,17 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+This repo uses **Bun** for everything — package management (`bun install`, `bun.lock`) and running commands. Node is not required for development.
+
 ```bash
-npm test                # Runtime unit tests (bun test) + all feature tests (Bun runner), single run
-npm run test:unit       # Runtime unit tests only  (bun test src/runtime)
-npm run test:features   # Feature tests only        (bun src/runtime/cli.ts)
-npm run test:ci         # Alias for `npm test`
-npm run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
-npm run lint            # ESLint
-npm run format          # Prettier
+bun install             # Install dependencies (writes bun.lock)
+bun run test            # Runtime unit tests + all feature tests, single run
+bun run test:unit       # Runtime unit tests only  (bun test src/runtime)
+bun run test:features   # Feature tests only        (bun src/runtime/cli.ts)
+bun run test:ci         # Alias for `bun run test`
+bun run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
+bun run lint            # ESLint
+bun run format          # Prettier
 ```
 
-The runner requires **Bun** (it runs the TypeScript step files natively). To run a subset, pass feature globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
+Use `bun run test`, **not** `bun test` — the latter is Bun's own test runner and would only pick up `src/runtime/*.test.ts`, skipping the feature suite. To run a subset, pass feature globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
 
 ## Architecture
 
