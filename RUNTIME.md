@@ -99,7 +99,8 @@ Config is resolved from three sources, later ones overriding earlier ones:
 | `steps`       | `string \| string[]`      | `**/*.steps.ts`    | Step-module glob(s). Importing them is what registers your steps.       |
 | `world`       | `string`                  | `BasicWorld`       | Module that default-exports a world factory `() => world`.              |
 | `concurrency` | `number`                  | `1` (serial)       | Max scenarios in flight at once. See [Concurrency](#concurrency).       |
-| `reporter`    | `"pretty" \| "progress"`  | `pretty`           | Output style. See [Reporters](#reporters).                              |
+| `reporter`    | `"pretty" \| "progress"`  | `pretty`           | Output style. See [Reporters & output](#reporters--output).             |
+| `verbose`     | `boolean`                 | `false`            | Report every scenario, not just failures.                               |
 | `name`        | `string`                  | —                  | Only scenarios whose name matches (substring, or `/regex/flags`).       |
 | `tags`        | `string`                  | —                  | Cucumber tag expression, e.g. `@smoke and not @wip`.                    |
 
@@ -123,6 +124,7 @@ Positional arguments are feature globs and **override** the configured
 | `--world <module>`      | `-w`  | World factory module.                                   |
 | `--concurrency <n>`     | `-c`  | Max scenarios in flight (default `1`).                  |
 | `--reporter <name>`     | `-r`  | `pretty` (default) or `progress`.                       |
+| `--verbose`             | `-v`  | Report every scenario, not just failures.               |
 | `--config <path>`       |       | Directory to resolve the config file and globs from.    |
 | `--help`                | `-h`  | Show usage.                                             |
 
@@ -203,13 +205,38 @@ write to a mutable module-level variable that another step reads.** That is a
 cross-scenario data race and the only way to break parallel runs. Keep
 per-scenario state in the world and you can turn concurrency up freely.
 
-## Reporters
+## Reporters & output
 
-- **`pretty`** (default) — a Cucumber-style tree grouped by feature, each
-  scenario listing its steps with pass/fail/skip marks, then a summary. Failures
-  include a stack frame pointing at the failing line in the `.feature` file.
-- **`progress`** — one character per scenario as it finishes (`.` pass, `F`
-  fail, `-` skip), then failures in detail and the summary. Best for large
-  suites.
+By default the runner is quiet: it prints a dot per scenario as a heartbeat
+(`.` pass, `F` fail, `-` skip), then **only the failing scenarios** in detail,
+then a summary. Pass `--verbose` (`-v`) to report every scenario instead.
+
+Each failure is shown Cucumber-style so it's easy to locate:
+
+```
+✗ a user can log in
+    features/auth.feature:12
+
+  ✓ Given a registered user
+  ✗ Then they reach the dashboard
+      feature: features/auth.feature:15
+      defined: features/steps/auth.steps.ts:40
+      AssertionError: expected "/login" to equal "/dashboard"
+          at features/steps/auth.steps.ts:42:18
+```
+
+- **`feature:`** — the `.feature` file and line of the failing step.
+- **`defined:`** — where that step is defined (its `.step(...)` call site).
+- The stack is trimmed to your own code (library, engine, and `node_modules`
+  frames removed) and source-mapped by Bun to the original TypeScript, so the
+  top frame is the line in your step that actually threw.
+
+Two styles are available via `--reporter`:
+
+- **`pretty`** (default) — honours `--verbose`: failures-only by default, or the
+  full feature → scenario → step tree (each step annotated with its definition
+  location) under `--verbose`.
+- **`progress`** — always compact (dots + failures + summary); ignores
+  `--verbose`.
 
 Colour is emitted only to a TTY and is disabled when `NO_COLOR` is set.

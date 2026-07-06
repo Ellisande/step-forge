@@ -27,6 +27,11 @@ export interface RunnerOptions {
   concurrency?: number;
   /** Reporter name. Default `pretty`. */
   reporter?: "pretty" | "progress";
+  /**
+   * Verbose output: report every scenario (pass, fail, skip) instead of only
+   * failures. Passed to whichever reporter is active. Default `false`.
+   */
+  verbose?: boolean;
   /** Only run scenarios whose name matches this (string → substring/regex). */
   name?: string;
   /** Cucumber tag expression, e.g. `@smoke and not @wip`. */
@@ -41,6 +46,7 @@ export interface ResolvedConfig {
   world?: string;
   concurrency: number;
   reporter: "pretty" | "progress";
+  verbose: boolean;
   name?: string;
   tags?: string;
 }
@@ -106,6 +112,7 @@ export function resolveConfig(
     world: pick("world"),
     concurrency: pick("concurrency") ?? 1,
     reporter: pick("reporter") ?? "pretty",
+    verbose: pick("verbose") ?? false,
     name: pick("name"),
     tags: pick("tags"),
   };

@@ -103,6 +103,7 @@ function expandScenario(
       {
         name: scenario.name,
         file: filePath,
+        line: scenario.location.line,
         steps: allSteps,
         tags: scenarioTags,
       },
@@ -134,6 +135,7 @@ function expandScenario(
       results.push({
         name: headers.map((h, i) => `${h}=${values[i]}`).join(", "),
         file: filePath,
+        line: row.location.line,
         steps: allSteps,
         tags: exampleTags,
         outline: { name: scenario.name },

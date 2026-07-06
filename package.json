@@ -43,7 +43,7 @@
   "scripts": {
     "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md RUNTIME.md LICENSE.md CHANGELOG.md build/",
     "test": "bun run test:unit && bun run test:features",
-    "test:unit": "bun test src/runtime",
+    "test:unit": "bun test src",
     "test:features": "bun src/runtime/cli.ts",
     "test:ci": "bun run test",
     "lint": "eslint . --ext .ts",

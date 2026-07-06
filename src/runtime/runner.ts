@@ -96,7 +96,10 @@ export interface RunResult {
  */
 export async function run(
   config: ResolvedConfig,
-  reporter: Reporter = makeReporter(config.reporter, config.cwd)
+  reporter: Reporter = makeReporter(config.reporter, {
+    cwd: config.cwd,
+    verbose: config.verbose,
+  })
 ): Promise<RunResult> {
   const start =
     typeof performance !== "undefined" ? performance.now() : Date.now();

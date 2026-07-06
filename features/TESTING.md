@@ -1,6 +1,6 @@
 # Testing
 
-All tests run natively under **Bun** in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library, executed by the native runner (`src/runtime/cli.ts`) configured via `step-forge.config.ts`. There is no Vitest and no Cucumber.js runtime involved. Runtime internals also have `bun:test` unit tests (`src/runtime/*.test.ts`).
+All tests run natively under **Bun** in a self-testing pattern: feature files in `features/` with step definitions in `features/steps/` exercise the library, executed by the native runner (`src/runtime/cli.ts`) configured via `step-forge.config.ts`. There is no Vitest and no Cucumber.js runtime involved. Runtime internals also have `bun:test` unit tests (`src/**/*.test.ts`, run with `bun test src`).
 
 ## Test Scripts
 

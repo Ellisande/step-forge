@@ -16,6 +16,7 @@ Options:
   -w, --world <module>     World factory module (default export () => world)
   -c, --concurrency <n>    Max scenarios in flight (default: 1, i.e. serial)
   -r, --reporter <name>    "pretty" (default) or "progress"
+  -v, --verbose            Report every scenario, not just failures
       --config <path>      Config file directory (default: cwd)
   -h, --help               Show this help
 
@@ -34,6 +35,7 @@ function parseCli(argv: string[]): { cwd: string; overrides: RunnerOptions } {
       world: { type: "string", short: "w" },
       concurrency: { type: "string", short: "c" },
       reporter: { type: "string", short: "r" },
+      verbose: { type: "boolean", short: "v" },
       config: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -50,6 +52,7 @@ function parseCli(argv: string[]): { cwd: string; overrides: RunnerOptions } {
   if (values.name) overrides.name = values.name;
   if (values.steps) overrides.steps = values.steps;
   if (values.world) overrides.world = values.world;
+  if (values.verbose) overrides.verbose = true;
   if (values.reporter) {
     if (values.reporter !== "pretty" && values.reporter !== "progress") {
       throw new Error(`Unknown reporter: ${values.reporter}`);

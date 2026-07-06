@@ -14,6 +14,8 @@ export interface StepDefinitionMeta {
 export interface ParsedScenario {
   name: string;
   file: string;
+  /** 1-based line of the `Scenario:`/`Scenario Outline:` keyword in the file. */
+  line?: number;
   steps: ParsedStep[];
   /**
    * Gherkin tags in effect for this scenario, each including the leading `@`

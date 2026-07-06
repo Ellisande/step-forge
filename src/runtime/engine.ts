@@ -111,6 +111,12 @@ export interface StepResult {
   step: ParsedStep;
   status: "passed" | "failed" | "skipped";
   error?: Error;
+  /**
+   * Absolute `file:line:column` where the matched step is *defined* (its
+   * `.step(...)` call site), for Cucumber-style reporting. Absent when no step
+   * matched (undefined/ambiguous) or the step was skipped.
+   */
+  source?: string;
   durationMs?: number;
 }
 
@@ -120,9 +126,9 @@ export interface ScenarioResult {
   steps: StepResult[];
   /**
    * The scenario's first error, if it failed. Usually the same object as the
-   * failing step's `error` (with a synthetic `.feature` stack frame attached),
-   * but for a hook failure there's no step to point at, so this is the only
-   * place it surfaces. Reporters read this; the runner never throws it.
+   * failing step's `error`; for a hook failure there's no step to point at, so
+   * this is the only place it surfaces. Reporters read this; the runner never
+   * throws it.
    */
   error?: Error;
   /** Wall-clock duration of the whole scenario, in milliseconds. */
@@ -178,13 +184,18 @@ export async function runScenario(
       steps.push({ step, status: "skipped" });
       continue;
     }
+    // `source` is captured before `execute` so a failing step still carries its
+    // definition location; it stays undefined if matching itself throws
+    // (undefined/ambiguous step).
+    let source: string | undefined;
     try {
       const { step: def, args } = matchStep(step, compiled);
+      source = def.source;
       await def.execute(world, args);
-      steps.push({ step, status: "passed" });
+      steps.push({ step, status: "passed", source });
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      steps.push({ step, status: "failed", error });
+      steps.push({ step, status: "failed", error, source });
       fail(error);
     }
   }
@@ -197,14 +208,6 @@ export async function runScenario(
     } catch (err) {
       fail(err);
     }
-  }
-
-  if (failed && firstError) {
-    // Surface the failing Gherkin line as a real stack frame so reporters render
-    // a code frame from the `.feature` file itself. Hook failures have no step
-    // to point at, so they surface with their own stack unchanged.
-    const failing = steps.find(s => s.status === "failed");
-    if (failing) attachFeatureFrame(firstError, scenario.file, failing.step);
   }
 
   return {
@@ -223,34 +226,4 @@ export async function runScenario(
  */
 function now(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
-}
-
-/**
- * Prepend a synthetic stack frame pointing at the failing Gherkin step. Because
- * the frame's file is the real `.feature` on disk, the test runner treats it as
- * a source location and shows a code frame at the step — instead of us jamming
- * `file:line` into the error message. The frame goes *above* the real stack, so
- * the step-definition frames (the actual throw site) are preserved below it.
- */
-function attachFeatureFrame(
-  error: Error,
-  file: string,
-  step: ParsedStep
-): void {
-  const label = `${step.effectiveKeyword} ${step.text}`;
-  const frame = `    at ${label} (${file}:${step.line}:${step.column})`;
-  const stack = error.stack;
-  if (!stack) {
-    error.stack = `${error.name}: ${error.message}\n${frame}`;
-    return;
-  }
-  // A message can span multiple lines, so split on the first frame marker
-  // rather than the first newline to find where the header ends.
-  const firstFrame = stack.indexOf("\n    at ");
-  if (firstFrame === -1) {
-    error.stack = `${stack}\n${frame}`;
-  } else {
-    error.stack =
-      stack.slice(0, firstFrame) + `\n${frame}` + stack.slice(firstFrame);
-  }
 }

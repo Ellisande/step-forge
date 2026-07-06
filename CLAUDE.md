@@ -9,7 +9,7 @@ This repo uses **Bun** for everything — package management (`bun install`, `bu
 ```bash
 bun install             # Install dependencies (writes bun.lock)
 bun run test            # Runtime unit tests + all feature tests, single run
-bun run test:unit       # Runtime unit tests only  (bun test src/runtime)
+bun run test:unit       # Runtime unit tests only  (bun test src)
 bun run test:features   # Feature tests only        (bun src/runtime/cli.ts)
 bun run test:ci         # Alias for `bun run test`
 bun run build           # Full build: clean → tsc typecheck → tsdown (bundle + dts) → copy package.json
@@ -51,21 +51,22 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 - `src/world.ts` — `BasicWorld<Given, When, Then>` with `MergeableWorldState` (lodash deep merge, arrays concatenate)
 - `src/builderTypeUtils.ts` — TypeScript utility types driving the builder's type safety
 - `src/utils.ts` — `requireFrom{Given,When,Then}()` for runtime required-dependency validation
+- `src/sourceLocation.ts` — capture/trim source locations. `captureDefinitionSite()` (used by `.step()`) records where a step is defined; `userFrames()` trims an error stack to user code (drops library, engine, and `node_modules` frames). Used by `common.ts` (capture) and `reporters.ts` (render).
 
 #### Runtime (`src/runtime/`)
 
 - `registry.ts` — `StepRegistry` and the `globalRegistry` singleton. Steps register here; the engine reads from here.
-- `engine.ts` — `compileRegistry(registry)` compiles the step expressions **once** per run; `runScenario(scenario, compiled, makeWorld)` matches each Gherkin step via a `CucumberExpression` (strict — undefined and ambiguous both throw during matching), runs it against a fresh world per scenario, skips remaining steps after the first failure, and returns a `ScenarioResult`. It **never throws for a test failure** — the first error is attached to the result with a synthetic `.feature` stack frame for reporters to render.
+- `engine.ts` — `compileRegistry(registry)` compiles the step expressions **once** per run; `runScenario(scenario, compiled, makeWorld)` matches each Gherkin step via a `CucumberExpression` (strict — undefined and ambiguous both throw during matching), runs it against a fresh world per scenario, skips remaining steps after the first failure, and returns a `ScenarioResult`. It **never throws for a test failure** — the first error is on the result, and each `StepResult` carries the matched step's definition `source` (file:line) for the reporter to show. Location rendering is structural (from `step.line` + `source`), not a synthetic stack frame.
 - `cli.ts` — the `step-forge` CLI (`#!/usr/bin/env bun`): arg parsing, exit codes (`0` pass / `1` fail).
 - `config.ts` — loads `step-forge.config.ts` and merges CLI overrides (`RunnerOptions`).
 - `runner.ts` — discovers + parses features, imports step modules (self-register), compiles once, filters, and runs scenarios through a concurrency-capped pool (serial by default).
 - `filter.ts` — Cucumber tag-expression evaluator + name / `@only` / `@skip` selection.
-- `reporters.ts` — `pretty` (feature tree) and `progress` (dots) reporters.
+- `reporters.ts` — `pretty` (default) and `progress` reporters. Both take a `verbose` flag: default output is a dots heartbeat + failures-only in Cucumber style (`feature:` line, `defined:` step location, error trimmed to user frames); `--verbose` makes `pretty` print the full tree. Locations come from `../sourceLocation`.
 - `index.ts` — the `@step-forge/step-forge/runtime` barrel (runner-agnostic core for building other adapters).
 
 ### Testing
 
-Feature tests run under **Bun** via the native runner (`bun src/runtime/cli.ts`, aka `npm run test:features`), configured by `step-forge.config.ts`. The runner parses each `.feature`, imports the step-definition modules so they self-register into `globalRegistry`, compiles the step expressions once, and executes scenarios **serially by default** (raise `--concurrency` to parallelize — safe because scenario state lives only in the per-scenario world). Runtime internals also have `bun:test` unit tests (`src/runtime/*.test.ts`, run via `bun test src/runtime` / `npm run test:unit`); `npm test` runs both.
+Feature tests run under **Bun** via the native runner (`bun src/runtime/cli.ts`, aka `npm run test:features`), configured by `step-forge.config.ts`. The runner parses each `.feature`, imports the step-definition modules so they self-register into `globalRegistry`, compiles the step expressions once, and executes scenarios **serially by default** (raise `--concurrency` to parallelize — safe because scenario state lives only in the per-scenario world). Runtime internals also have `bun:test` unit tests (`src/**/*.test.ts`, run via `bun test src` / `bun run test:unit`); `bun run test` runs both.
 
 Type-safety tests use `@ts-expect-error` annotations validated at `tsc` compile time (`npm run build` runs `tsc --noEmit`), not at runtime.
 

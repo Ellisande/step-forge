@@ -4,6 +4,7 @@ import _ from "lodash";
 import { DepMap, FullDependencies, StepType } from "./builderTypeUtils";
 import { Parser, stringParser } from "./parsers";
 import { globalRegistry } from "./runtime/registry";
+import { captureDefinitionSite } from "./sourceLocation";
 import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
 import { MergeableWorld } from "./world";
 
@@ -81,8 +82,11 @@ export const addStep =
     };
 
     // Registration is the terminal action of the builder chain: calling
-    // `.step(fn)` makes the step matchable and executable by the runtime.
-    globalRegistry.add({ stepType, expression, parsers, execute });
+    // `.step(fn)` makes the step matchable and executable by the runtime. We
+    // capture *this* call site (the user's `.step(...)` line) so reporters can
+    // show where a failing step is defined, Cucumber-style.
+    const source = captureDefinitionSite();
+    globalRegistry.add({ stepType, expression, parsers, execute, source });
 
     return {
       statement,
