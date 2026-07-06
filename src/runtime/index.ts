@@ -15,7 +15,7 @@ export {
   HookRegistry,
   globalHookRegistry,
   runHooks,
-  ensureGlobalHooks,
+  runHooksParallel,
 } from "./hooks";
 export type {
   HookScope,

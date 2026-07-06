@@ -162,12 +162,15 @@ beforeScenario(({ world, scenario }) => {
 
 | Hook                  | Runs                                             |
 | --------------------- | ------------------------------------------------ |
-| `beforeAll`/`afterAll` | Once around the entire run.                     |
+| `beforeAll`/`afterAll` | Once around the entire run — `beforeAll` before concurrency starts, `afterAll` after every scenario is done. |
 | `beforeFeature`/`afterFeature` | Around each feature file.               |
 | `beforeScenario`/`afterScenario` | Around each scenario (gets its world).|
 
-`after*` hooks run in reverse registration order so teardown unwinds setup, and
-`afterScenario` runs even when a step failed.
+Multiple `beforeAll` (and multiple `afterAll`) hooks run **in parallel** with no
+ordering between them — if one setup step must precede another, sequence both
+inside a single hook. Feature and scenario `after*` hooks instead run in reverse
+registration order so teardown unwinds setup, and `afterScenario` runs even when
+a step failed.
 
 ## Filtering
 

@@ -63,8 +63,9 @@ export class HookRegistry {
 export const globalHookRegistry = new HookRegistry();
 
 /**
- * Run every registered feature/global hook of a scope+timing in order. Used by
- * the generated test modules (feature hooks). Throws if a hook throws, so the
+ * Run every registered hook of a scope+timing **in registration order** (after
+ * hooks reversed by {@link HookRegistry.for}, so teardown unwinds setup). Used
+ * for feature hooks, where ordering matters. Throws if a hook throws, so the
  * runner reports it against the enclosing boundary.
  */
 export async function runHooks(
@@ -77,41 +78,23 @@ export async function runHooks(
   }
 }
 
-// Process-global (via Symbol.for so it survives module duplication) guard so
-// global hooks fire exactly once per worker, no matter how many feature modules
-// call in.
-const GLOBAL_GUARD = Symbol.for("step-forge.globalHooksStarted");
-
 /**
- * Run global before-hooks once per worker, ahead of that worker's first
- * scenario, and schedule global after-hooks for worker exit. Idempotent: every
- * feature module calls this in a `beforeAll`, but only the first call in a given
- * worker does anything.
+ * Run every registered hook of a scope+timing **concurrently**, resolving once
+ * all of them settle. This is how global `beforeAll`/`afterAll` run: independent
+ * setup/teardown steps fire in parallel with no ordering between them. A hook
+ * with a sequential requirement should sequence that work inside a single hook.
  *
- * Semantics & caveats (the once-per-worker model):
- * - Runs in the *same* realm as steps, so global setup may touch in-process
- *   state that steps later read.
- * - "Once per worker", not strictly once per run — with multiple workers it runs
- *   in each. Size global setup to be worker-safe (e.g. a server per worker).
- * - Teardown is best-effort: after-hooks start on the worker's `beforeExit` and
- *   are not awaited by the runner, so keep them fast/synchronous.
+ * The runner calls this exactly once for `beforeAll` (before any scenario
+ * starts) and once for `afterAll` (after every scenario is done), so global
+ * setup/teardown brackets the whole run deterministically. Rejects if any hook
+ * rejects (via `Promise.all`), surfacing the first failure to the caller.
  */
-export async function ensureGlobalHooks(
+export async function runHooksParallel(
+  scope: "feature" | "global",
+  timing: HookTiming,
   registry: HookRegistry = globalHookRegistry
 ): Promise<void> {
-  const store = globalThis as Record<symbol, boolean>;
-  if (store[GLOBAL_GUARD]) return;
-  store[GLOBAL_GUARD] = true;
-
-  for (const hook of registry.for("global", "before")) {
-    await (hook.fn as PlainHookFn)();
-  }
-
-  process.once("beforeExit", () => {
-    void (async () => {
-      for (const hook of registry.for("global", "after")) {
-        await (hook.fn as PlainHookFn)();
-      }
-    })();
-  });
+  await Promise.all(
+    registry.for(scope, timing).map(hook => (hook.fn as PlainHookFn)())
+  );
 }

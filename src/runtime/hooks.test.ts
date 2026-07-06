@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { compileRegistry, runScenario } from "./engine";
 import { StepRegistry } from "./registry";
-import { HookRegistry, ScenarioInfo } from "./hooks";
+import { HookRegistry, runHooksParallel, ScenarioInfo } from "./hooks";
 import { BasicWorld } from "../world";
 import type { ParsedScenario } from "../analyzer/types";
 
@@ -88,4 +88,69 @@ test("each scenario's before-hook sees only its own identity (no cross-talk)", a
 
   expect(seenByRun.get("a.feature")).toEqual(["A"]);
   expect(seenByRun.get("b.feature")).toEqual(["B"]);
+});
+
+test("runHooksParallel runs global hooks concurrently, not in registration order", async () => {
+  const reg = new HookRegistry();
+  const order: string[] = [];
+  let releaseB!: () => void;
+  const bStarted = new Promise<void>(resolve => (releaseB = resolve));
+
+  // Hook A is registered first but can only finish once B has started. If the
+  // hooks ran sequentially in registration order, A would await `bStarted`
+  // forever (B never gets a turn) and this test would hang — so it passing at
+  // all proves they run concurrently, and the order proves B finished first.
+  reg.add({
+    scope: "global",
+    timing: "before",
+    fn: async () => {
+      await bStarted;
+      order.push("A");
+    },
+  });
+  reg.add({
+    scope: "global",
+    timing: "before",
+    fn: async () => {
+      order.push("B");
+      releaseB();
+    },
+  });
+
+  await runHooksParallel("global", "before", reg);
+
+  expect(order).toEqual(["B", "A"]);
+});
+
+test("runHooksParallel awaits every hook before resolving", async () => {
+  const reg = new HookRegistry();
+  const done: string[] = [];
+  reg.add({
+    scope: "global",
+    timing: "after",
+    fn: async () => {
+      await Promise.resolve();
+      done.push("x");
+    },
+  });
+  reg.add({ scope: "global", timing: "after", fn: () => void done.push("y") });
+
+  await runHooksParallel("global", "after", reg);
+
+  expect(done.sort()).toEqual(["x", "y"]);
+});
+
+test("runHooksParallel rejects if any hook throws", async () => {
+  const reg = new HookRegistry();
+  reg.add({
+    scope: "global",
+    timing: "before",
+    fn: async () => {
+      throw new Error("boom");
+    },
+  });
+
+  await expect(runHooksParallel("global", "before", reg)).rejects.toThrow(
+    "boom"
+  );
 });

@@ -58,12 +58,21 @@ export function afterFeature(fn: PlainHookFn): void {
   globalHookRegistry.add({ scope: "feature", timing: "after", fn });
 }
 
-/** Run once before the entire test run, across all feature files. */
+/**
+ * Run once before the entire run, ahead of any scenario (and before
+ * concurrency starts). Multiple `beforeAll` hooks run **in parallel** with no
+ * ordering between them — if a step of setup must precede another, sequence both
+ * inside a single hook.
+ */
 export function beforeAll(fn: PlainHookFn): void {
   globalHookRegistry.add({ scope: "global", timing: "before", fn });
 }
 
-/** Run once after the entire test run (reverse registration order). */
+/**
+ * Run once after the entire run, once every scenario is done. Multiple
+ * `afterAll` hooks run **in parallel** with no ordering between them — sequence
+ * dependent teardown inside a single hook.
+ */
 export function afterAll(fn: PlainHookFn): void {
   globalHookRegistry.add({ scope: "global", timing: "after", fn });
 }

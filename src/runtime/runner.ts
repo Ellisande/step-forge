@@ -11,7 +11,7 @@ import {
   runScenario,
   ScenarioResult,
 } from "./engine";
-import { ensureGlobalHooks, globalHookRegistry, runHooks } from "./hooks";
+import { globalHookRegistry, runHooks, runHooksParallel } from "./hooks";
 import { globalRegistry } from "./registry";
 import { selectScenarios } from "./filter";
 import { makeReporter, Reporter } from "./reporters";
@@ -116,10 +116,11 @@ export async function run(
     tags: config.tags,
   });
 
-  // Global before-hooks once; feature before/after bracket the whole batch.
-  // (Hooks aren't file-scoped in the registry, so per-file bracketing would be
-  // meaningless under concurrent execution.)
-  await ensureGlobalHooks(globalHookRegistry);
+  // Global `beforeAll` hooks run once, in parallel, before any scenario starts;
+  // feature before/after bracket the whole batch inside them. (Hooks aren't
+  // file-scoped in the registry, so per-file bracketing would be meaningless
+  // under concurrent execution.)
+  await runHooksParallel("global", "before", globalHookRegistry);
   await runHooks("feature", "before", globalHookRegistry);
 
   const results = await runPool(
@@ -135,6 +136,8 @@ export async function run(
   );
 
   await runHooks("feature", "after", globalHookRegistry);
+  // Global `afterAll` hooks run once, in parallel, after every scenario is done.
+  await runHooksParallel("global", "after", globalHookRegistry);
 
   const durationMs =
     (typeof performance !== "undefined" ? performance.now() : Date.now()) -
