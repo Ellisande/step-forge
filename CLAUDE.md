@@ -92,7 +92,7 @@ Dependencies and `node:` builtins are externalized automatically. The `build/` d
 
 ## Exports
 
-- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, the hooks (`beforeScenario`/`afterScenario`/`beforeFeature`/`afterFeature`/`beforeAll`/`afterAll`), and types (`Parser`, `StateFromDependencies`, …). From `src/index.ts`.
+- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, the hooks (`beforeScenario`/`afterScenario`/`beforeFeature`/`afterFeature`/`beforeAll`/`afterAll`), and types (`Parser`, `StateFromDependencies`, `RunnerOptions` for typing `step-forge.config.ts`, …). From `src/index.ts`.
 - `@step-forge/step-forge/runtime` — `runScenario`, `compileRegistry`, `StepRegistry`, `globalRegistry`, `UndefinedStepError`, `AmbiguousStepError`, the `RunnerOptions` type, and their types.
 - `@step-forge/step-forge/analyzer` — `analyze()` and related APIs.
 - Bins: `step-forge` (the feature runner, `src/runtime/cli.ts`) and `step-forge-analyze` (the analyzer CLI). Both run under **Bun**.

@@ -66,7 +66,7 @@ npm install --save-dev @step-forge/step-forge
 
    ```ts
    // step-forge.config.ts
-   import type { RunnerOptions } from "@step-forge/step-forge/runtime";
+   import type { RunnerOptions } from "@step-forge/step-forge";
 
    const config: RunnerOptions = {
      features: "features/**/*.feature",
