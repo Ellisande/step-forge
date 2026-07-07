@@ -10,22 +10,6 @@ const BUILDER_NAMES: Record<string, StepType> = {
 };
 
 /**
- * Built-in parsers exported by the library, mapped to the cucumber-expression
- * placeholder they register. A step's `.parsers([...])` drives which `{name}`
- * each variable becomes; without this the extractor defaulted every variable to
- * `{string}`, so `the deposit amount is {int}` was recorded as `{string}` and a
- * plain number like `100` looked unmatched. Custom parsers are resolved from
- * their `name` property (see {@link resolveCustomParserName}); anything we can't
- * resolve falls back to `string`.
- */
-const BUILTIN_PARSER_PLACEHOLDERS: Record<string, string> = {
-  intParser: "int",
-  numberParser: "float",
-  stringParser: "string",
-  booleanParser: "boolean",
-};
-
-/**
  * Threaded through the AST walk. `checker` is `null` on the parse-only fast
  * path; a step that genuinely needs type information sets `needsChecker`, which
  * triggers a one-time retry with a real type-checked `Program`.
@@ -162,7 +146,6 @@ function extractFromRegisterCall(
   const chain = collectCallChain(registerCall);
 
   let stepType: StepType | null = null;
-  let statementCall: ts.CallExpression | null = null;
   let expression: string | null = null;
   let dependencies: StepDefinitionMeta["dependencies"] = {
     given: {},
@@ -170,8 +153,6 @@ function extractFromRegisterCall(
     then: {},
   };
   let produces: string[] = [];
-  // Placeholder names per variable, from `.parsers([...])` (positional).
-  let placeholders: string[] | null = null;
 
   for (const link of chain) {
     const name = getCallName(link);
@@ -192,13 +173,8 @@ function extractFromRegisterCall(
       continue;
     }
 
-    if (name === "parsers") {
-      placeholders = resolveParserPlaceholders(link, sourceFile);
-      continue;
-    }
-
     if (name === "statement") {
-      statementCall = link;
+      expression = extractExpression(link);
       // Try to find the builder type by continuing up the chain
       continue;
     }
@@ -209,12 +185,6 @@ function extractFromRegisterCall(
       continue;
     }
   }
-
-  // Build the expression after the whole chain is seen, so `.parsers([...])` —
-  // which the chain visits before `.statement(...)` here, but conceptually
-  // annotates it — determines each variable's placeholder.
-  if (statementCall)
-    expression = extractExpression(statementCall, placeholders);
 
   // If we didn't find the builder or expression in the chain, try the "re-exported" pattern:
   // const Given = givenBuilder<T>().statement;
@@ -284,10 +254,7 @@ function getCallName(call: ts.CallExpression): string | null {
   return null;
 }
 
-function extractExpression(
-  statementCall: ts.CallExpression,
-  placeholders: string[] | null
-): string | null {
+function extractExpression(statementCall: ts.CallExpression): string | null {
   const arg = statementCall.arguments[0];
   if (!arg) return null;
 
@@ -298,17 +265,16 @@ function extractExpression(
 
   // Arrow function with template literal: .statement((name: string) => `a user named ${name}`)
   if (ts.isArrowFunction(arg)) {
-    return extractExpressionFromArrowFunction(arg, placeholders);
+    return extractExpressionFromArrowFunction(arg);
   }
 
   return null;
 }
 
 function extractExpressionFromArrowFunction(
-  fn: ts.ArrowFunction,
-  placeholders: string[] | null
+  fn: ts.ArrowFunction
 ): string | null {
-  const params = fn.parameters.map(p => p.name.getText());
+  const params = fn.parameters.map((p) => p.name.getText());
 
   // The body should be a template expression or string literal
   let body = fn.body;
@@ -324,7 +290,7 @@ function extractExpressionFromArrowFunction(
   }
 
   if (ts.isTemplateExpression(body)) {
-    return reconstructExpressionFromTemplate(body, params, placeholders);
+    return reconstructExpressionFromTemplate(body, params);
   }
 
   if (ts.isNoSubstitutionTemplateLiteral(body)) {
@@ -336,88 +302,21 @@ function extractExpressionFromArrowFunction(
 
 function reconstructExpressionFromTemplate(
   template: ts.TemplateExpression,
-  paramNames: string[],
-  placeholders: string[] | null
+  paramNames: string[]
 ): string {
   let result = template.head.text;
 
   for (const span of template.templateSpans) {
-    // A variable interpolation becomes its declared parser placeholder (default
-    // `{string}`); a non-variable interpolation falls back to `{string}`.
-    let placeholder = "string";
-    if (
-      ts.isIdentifier(span.expression) &&
-      paramNames.includes(span.expression.text)
-    ) {
-      const index = paramNames.indexOf(span.expression.text);
-      placeholder = placeholders?.[index] ?? "string";
+    if (ts.isIdentifier(span.expression) && paramNames.includes(span.expression.text)) {
+      result += "{string}";
+    } else {
+      // Non-parameter expression, use {string} as fallback
+      result += "{string}";
     }
-    result += `{${placeholder}}`;
     result += span.literal.text;
   }
 
   return result;
-}
-
-/**
- * Resolve `.parsers([intParser, colorParser])` to the placeholder name for each
- * variable, positionally. Built-ins map via {@link BUILTIN_PARSER_PLACEHOLDERS};
- * a custom parser is resolved from its `name` property in the same source file;
- * anything unresolved defaults to `string`, matching the runtime default parser.
- */
-function resolveParserPlaceholders(
-  parsersCall: ts.CallExpression,
-  sourceFile: ts.SourceFile
-): string[] | null {
-  const arg = parsersCall.arguments[0];
-  if (!arg || !ts.isArrayLiteralExpression(arg)) return null;
-  return arg.elements.map(element => {
-    if (ts.isIdentifier(element)) {
-      const builtin = BUILTIN_PARSER_PLACEHOLDERS[element.text];
-      if (builtin) return builtin;
-      const custom = resolveCustomParserName(element.text, sourceFile);
-      if (custom) return custom;
-    }
-    return "string";
-  });
-}
-
-/**
- * Find `const <identifier> = { name: "...", ... }` in `sourceFile` and return
- * its `name` — the cucumber placeholder a custom `Parser` registers. Scoped to
- * the file, so a parser imported from elsewhere won't resolve (it falls back to
- * `string`); the common in-file `const colorParser: Parser<Color> = {...}` does.
- */
-function resolveCustomParserName(
-  identifier: string,
-  sourceFile: ts.SourceFile
-): string | null {
-  let found: string | null = null;
-  const visit = (node: ts.Node): void => {
-    if (found) return;
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === identifier &&
-      node.initializer &&
-      ts.isObjectLiteralExpression(node.initializer)
-    ) {
-      for (const prop of node.initializer.properties) {
-        if (
-          ts.isPropertyAssignment(prop) &&
-          ts.isIdentifier(prop.name) &&
-          prop.name.text === "name" &&
-          ts.isStringLiteralLike(prop.initializer)
-        ) {
-          found = prop.initializer.text;
-          return;
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return found;
 }
 
 function extractDependencies(
@@ -433,7 +332,8 @@ function extractDependencies(
   if (!arg || !ts.isObjectLiteralExpression(arg)) return deps;
 
   for (const prop of arg.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name))
+      continue;
 
     const phase = prop.name.text as "given" | "when" | "then";
     if (!deps[phase]) continue;
@@ -513,7 +413,7 @@ function extractKeysFromExpression(
         (p): p is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
           ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)
       )
-      .map(p => p.name.getText())
+      .map((p) => p.name.getText())
       .filter(Boolean);
   }
 
@@ -528,8 +428,8 @@ function extractKeysFromExpression(
     const type = ctx.checker.getTypeAtLocation(expr);
     return type
       .getProperties()
-      .map(p => p.name)
-      .filter(n => n !== "merge");
+      .map((p) => p.name)
+      .filter((n) => n !== "merge");
   } catch {
     return [];
   }
@@ -588,10 +488,8 @@ function resolveReExportedCall(
     if (ts.isCallExpression(callExpr)) {
       const callee = callExpr.expression;
       if (ts.isIdentifier(callee) && BUILDER_NAMES[callee.text]) {
-        // The lastCall IS the statement call — extract expression from it.
-        // The re-exported-builder pattern carries no `.parsers(...)`, so
-        // variables fall back to the default `{string}` placeholder.
-        const expression = extractExpression(lastCall, null);
+        // The lastCall IS the statement call — extract expression from it
+        const expression = extractExpression(lastCall);
         return {
           stepType: BUILDER_NAMES[callee.text],
           expression,
