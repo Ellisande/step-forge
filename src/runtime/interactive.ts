@@ -22,8 +22,6 @@ type Choice =
 
 const useColor =
   !process.env.NO_COLOR && (process.stdout.isTTY ?? false) === true;
-const bold = (s: string) => (useColor ? `\x1b[1m${s}\x1b[22m` : s);
-const dim = (s: string) => (useColor ? `\x1b[2m${s}\x1b[22m` : s);
 const red = (s: string) => (useColor ? `\x1b[31m${s}\x1b[39m` : s);
 const yellow = (s: string) => (useColor ? `\x1b[33m${s}\x1b[39m` : s);
 
@@ -191,15 +189,6 @@ class InteractiveSession {
       return;
     }
 
-    // A single scenario is analyzed (dependency/undefined/ambiguous checks);
-    // its diagnostics feed the results region as notes above the dots.
-    const single = selected.length === 1;
-    if (single) {
-      for (const line of await this.analyzeScenario(selected[0])) {
-        this.prompt.note(line);
-      }
-    }
-
     await this.spawnRun(runArgs(choice, this.config));
   }
 
@@ -278,36 +267,6 @@ class InteractiveSession {
         resolve();
       });
     });
-  }
-
-  /**
-   * Run the static analyzer over a single scenario and return any dependency /
-   * undefined / ambiguous diagnostics as note lines for the results region. The
-   * analyzer needs the optional `typescript` peer for AST extraction; if it's
-   * absent we note that and skip, never failing the run.
-   */
-  private async analyzeScenario(scenario: ParsedScenario): Promise<string[]> {
-    let analyzer: typeof import("../analyzer/index");
-    try {
-      analyzer = await import("../analyzer/index");
-    } catch {
-      return [dim("  analysis skipped: install `typescript` to enable it")];
-    }
-    try {
-      const stepFiles = await globFiles(this.config.steps, this.config.cwd);
-      const defs = analyzer.extractStepDefinitions(stepFiles);
-      const matched = analyzer.matchScenarioSteps(scenario, defs);
-      const diagnostics = analyzer.defaultRules.flatMap(rule =>
-        rule.check(scenario, matched)
-      );
-      return formatDiagnostics(diagnostics, this.config.cwd);
-    } catch (err) {
-      return [
-        dim(
-          `  analysis unavailable: ${err instanceof Error ? err.message : err}`
-        ),
-      ];
-    }
   }
 
   // --- status line ---------------------------------------------------------
@@ -452,24 +411,4 @@ function clock(): string {
   return [d.getHours(), d.getMinutes(), d.getSeconds()]
     .map(n => String(n).padStart(2, "0"))
     .join(":");
-}
-
-// --- diagnostics -----------------------------------------------------------
-function formatDiagnostics(
-  diagnostics: import("../analyzer/types").Diagnostic[],
-  cwd: string
-): string[] {
-  if (diagnostics.length === 0) return []; // clean scenario: say nothing, let the run speak
-  const lines = [bold("  analyzer:")];
-  for (const d of diagnostics) {
-    const mark =
-      d.severity === "error"
-        ? red("✗")
-        : d.severity === "warning"
-          ? yellow("!")
-          : dim("i");
-    const loc = `${path.relative(cwd, d.file)}:${d.range.startLine}`;
-    lines.push(`  ${mark} ${d.message} ${dim(`(${loc})`)}`);
-  }
-  return lines;
 }

@@ -73,7 +73,7 @@ interface ResultsState {
   dots: string[];
   /** Rendered Cucumber failure blocks (each multi-line). */
   failures: string[];
-  /** Extra lines above the dots: analyzer diagnostics, errors, empty notices. */
+  /** Extra lines above the dots: errors, empty notices. */
   notes: string[];
 }
 
