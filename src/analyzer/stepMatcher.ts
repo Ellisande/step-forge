@@ -1,30 +1,55 @@
+import {
+  CucumberExpression,
+  ParameterType,
+  ParameterTypeRegistry,
+} from "@cucumber/cucumber-expressions";
 import { MatchedStep, ParsedScenario, StepDefinitionMeta } from "./types.js";
 
 interface CompiledPattern {
-  regex: RegExp;
+  expression: CucumberExpression;
   definition: StepDefinitionMeta;
 }
 
+/** `{name}` tokens in a cucumber expression (empty name is the anonymous `{}`). */
+const PARAM_TOKEN = /\{([^}]*)\}/g;
+
+/**
+ * Compile each definition's cucumber expression with the **same** engine the
+ * runtime uses (`@cucumber/cucumber-expressions`), so the analyzer and the
+ * runtime agree on what a step matches.
+ *
+ * A hand-rolled `{param}` → `(.+)` regex used to stand in here, but it treated
+ * cucumber-expression alternative (`a/b`) and optional (`text(s)`) syntax as
+ * literal characters — so any step definition using them (e.g.
+ * `there should be {int} error/errors`) never matched, and every such step was
+ * wrongly reported as an undefined step regardless of the real state.
+ *
+ * Built-in placeholders (`{int}`, `{float}`, `{string}`, `{word}`) keep their
+ * real, strict regexes so the analyzer disambiguates the way the runtime does
+ * (e.g. `no` isn't an `{int}`). The analyzer has only the expression string, not
+ * a custom parser's regexp, so each custom `{name}` is registered as a permissive
+ * parameter type (any value) — lenient about the value's exact shape, but still
+ * anchored by the surrounding literal text.
+ */
 function compileDefinitions(
   definitions: StepDefinitionMeta[]
 ): CompiledPattern[] {
   const compiled: CompiledPattern[] = [];
   for (const def of definitions) {
     try {
-      // Replace {paramType} placeholders with (.+) to match any value,
-      // regardless of which parser placeholder ({string}, {int}, ...) the
-      // step definition declared.
-      const placeholder = "###PLACEHOLDER###";
-      const regexStr = def.expression
-        .replace(/\{[^}]+\}/g, placeholder)
-        .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
-        .replace(new RegExp(placeholder, "g"), "(.+)");
+      const registry = new ParameterTypeRegistry();
+      for (const [, name] of def.expression.matchAll(PARAM_TOKEN)) {
+        if (!name || registry.lookupByTypeName(name)) continue;
+        registry.defineParameterType(
+          new ParameterType(name, /.+/, null, (value: string) => value)
+        );
+      }
       compiled.push({
-        regex: new RegExp(`^${regexStr}$`, "i"),
+        expression: new CucumberExpression(def.expression, registry),
         definition: def,
       });
     } catch {
-      // Skip definitions with invalid expressions
+      // Skip definitions whose expression can't be compiled.
     }
   }
   return compiled;
@@ -68,17 +93,17 @@ function findMatches(
 
   // First try to match with the correct step type
   const typedMatches: StepDefinitionMeta[] = [];
-  for (const { regex, definition } of compiled) {
+  for (const { expression, definition } of compiled) {
     if (definition.stepType !== expectedStepType) continue;
-    if (regex.test(text)) typedMatches.push(definition);
+    if (expression.match(text) != null) typedMatches.push(definition);
   }
 
   if (typedMatches.length > 0) return typedMatches;
 
   // Fallback: match any step type
   const fallbackMatches: StepDefinitionMeta[] = [];
-  for (const { regex, definition } of compiled) {
-    if (regex.test(text)) fallbackMatches.push(definition);
+  for (const { expression, definition } of compiled) {
+    if (expression.match(text) != null) fallbackMatches.push(definition);
   }
 
   return fallbackMatches;
