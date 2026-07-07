@@ -1,4 +1,5 @@
 import * as readline from "node:readline";
+import { PassThrough } from "node:stream";
 
 /**
  * A hand-rolled, dependency-free full-screen TUI for interactive mode. It owns
@@ -131,9 +132,14 @@ export class Prompt {
   private failScroll = 0; // top line offset of the failures pane
 
   private started = false;
+  /** Filtered key stream: raw stdin minus the mouse sequences we handle. */
+  private input?: PassThrough;
   private keyListener?: (str: string, key: readline.Key) => void;
+  private dataListener?: (chunk: Buffer) => void;
   private resizeListener?: () => void;
   private signalCleanup?: () => void;
+  /** Carry an incomplete mouse sequence split across stdin chunks. */
+  private mousePending = "";
 
   constructor(options: PromptOptions) {
     this.handlers = options.handlers;
@@ -199,11 +205,20 @@ export class Prompt {
   start(): void {
     if (this.started) return;
     this.started = true;
-    readline.emitKeypressEvents(process.stdin);
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    write("\x1b[?1049h"); // switch to the alternate screen buffer
+    // Alt screen + SGR mouse reporting. Mouse sequences are pulled out of the
+    // raw stdin stream by `onStdinData` (only the wheel is acted on — it scrolls
+    // the failures pane); everything else is forwarded to `input`, where
+    // readline decodes it into keypresses. Splitting the stream is required
+    // because readline would otherwise spill a mouse sequence's digits into the
+    // query.
+    write("\x1b[?1049h\x1b[?1000h\x1b[?1006h");
+    this.input = new PassThrough();
+    readline.emitKeypressEvents(this.input);
     this.keyListener = (str, key) => this.onKey(str, key ?? {});
-    process.stdin.on("keypress", this.keyListener);
+    this.input.on("keypress", this.keyListener);
+    this.dataListener = chunk => this.onStdinData(chunk);
+    process.stdin.on("data", this.dataListener);
     process.stdin.resume();
     this.resizeListener = () => this.render();
     process.stdout.on("resize", this.resizeListener);
@@ -215,11 +230,14 @@ export class Prompt {
   stop(): void {
     if (!this.started) return;
     this.started = false;
-    if (this.keyListener) process.stdin.off("keypress", this.keyListener);
+    if (this.dataListener) process.stdin.off("data", this.dataListener);
+    if (this.keyListener) this.input?.off("keypress", this.keyListener);
     if (this.resizeListener) process.stdout.off("resize", this.resizeListener);
     this.signalCleanup?.();
     this.restoreTerminal();
     process.stdin.pause();
+    this.input = undefined;
+    this.mousePending = "";
   }
 
   /** Force a repaint (after mutating `status`, say). No-op until started. */
@@ -234,6 +252,7 @@ export class Prompt {
    */
   private restoreTerminal(): void {
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    write("\x1b[?1006l\x1b[?1000l"); // stop mouse reporting
     write("\x1b[?25h"); // show cursor
     write("\x1b[?1049l"); // leave the alternate screen buffer
   }
@@ -355,12 +374,63 @@ export class Prompt {
     this.render();
   }
 
-  /** Scroll the failures pane by a page (clamped in {@link render}). */
+  /** Scroll the failures pane by whole pages (PgUp/PgDn). */
   private scrollFailures(pages: number): void {
-    this.failScroll = Math.max(0, this.failScroll + pages * this.failPage);
-    this.render();
+    this.adjustFailScroll(pages * this.failPage);
   }
   private failPage = 1; // last-rendered pane height, for page scrolling
+
+  /** Move the failures viewport by `deltaLines` (clamped in {@link render}). */
+  private adjustFailScroll(deltaLines: number): void {
+    this.failScroll = Math.max(0, this.failScroll + deltaLines);
+    this.render();
+  }
+
+  /**
+   * Split a raw stdin chunk: decode SGR/legacy mouse sequences here (only the
+   * wheel is acted on — it scrolls the failures pane by a few lines) and forward
+   * everything else to readline. An incomplete trailing mouse sequence is held
+   * in {@link mousePending} for the next chunk. `latin1` keeps every byte 1:1 so
+   * the forwarded bytes reassemble exactly (including multibyte input).
+   */
+  private onStdinData(chunk: Buffer): void {
+    const buf = this.mousePending + chunk.toString("latin1");
+    let out = "";
+    let i = 0;
+    while (i < buf.length) {
+      if (buf.startsWith("\x1b[<", i)) {
+        // SGR mouse: ESC [ < b ; x ; y (M|m)
+        const rel = /[Mm]/.exec(buf.slice(i + 3));
+        if (!rel) break; // incomplete — carry to the next chunk
+        const end = i + 3 + rel.index + 1;
+        this.handleMouse(buf.slice(i, end));
+        i = end;
+        continue;
+      }
+      if (buf.startsWith("\x1b[M", i)) {
+        // Legacy X10 mouse: ESC [ M then exactly three bytes.
+        if (i + 6 > buf.length) break; // incomplete
+        this.handleMouse(buf.slice(i, i + 6));
+        i += 6;
+        continue;
+      }
+      out += buf[i];
+      i++;
+    }
+    this.mousePending = buf.slice(i);
+    if (out) this.input?.write(Buffer.from(out, "latin1"));
+  }
+
+  /** Act on a decoded mouse sequence — wheel up/down scrolls failures; else ignore. */
+  private handleMouse(seq: string): void {
+    let button: number | null = null;
+    // eslint-disable-next-line no-control-regex
+    const sgr = /^\x1b\[<(\d+);\d+;\d+[Mm]$/.exec(seq);
+    if (sgr) button = parseInt(sgr[1], 10);
+    else if (seq.length === 6) button = seq.charCodeAt(3) - 32; // legacy X10
+    if (button === null || (button & 0x40) === 0) return; // wheel events only
+    this.adjustFailScroll((button & 1) === 0 ? -3 : 3); // up : down
+  }
 
   private refilter(): void {
     const q = this.query.trim().toLowerCase();

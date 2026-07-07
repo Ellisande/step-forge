@@ -166,8 +166,11 @@ population):
   every subsequent file change. Pressing Enter again forces a re-run.
 - **Editing the query** suspends auto-runs until you press Enter again — so you
   can retarget without a half-typed selection firing.
-- **↑ / ↓** move the selection highlight; **PgUp / PgDn** scroll the failures
-  pane when a run has more failures than fit on screen (the top stays pinned).
+- **↑ / ↓** move the selection highlight. The **mouse wheel** (or **PgUp /
+  PgDn**) scrolls the failures pane when a run has more failures than fit on
+  screen — the prompt, selection, and stats stay pinned. (While the dashboard is
+  up the wheel drives the results pane, so hold **Shift** for native terminal
+  text selection.)
 - **Esc** disarms and returns to browsing.
 - **Ctrl-C** quits and restores the terminal.
 
