@@ -143,10 +143,16 @@ fails, so it drops straight into CI.
 
 ## Interactive mode
 
-`step-forge -i` opens a Claude-Code-style typeahead prompt and watches your
-feature/step directories. Start typing to filter every **tag**, **feature**, and
-**scenario** in your suite; `↑`/`↓` move the highlight. A **scenario outline**
-appears as a single entry that runs all of its example rows.
+`step-forge -i` takes over the terminal with a full-screen dashboard and watches
+your feature/step directories. It is laid out top-to-bottom:
+
+1. **Prompt** — a Claude-Code-style typeahead. Start typing to filter every
+   **tag**, **feature**, and **scenario** in your suite. A **scenario outline**
+   appears as a single entry that runs all of its example rows.
+2. **Selection** — the ranked matches; `↑`/`↓` move the highlight.
+3. **Results** — the current run, ordered so the summary is right under the
+   controls: **stats** (live pass/fail/skip tallies + duration) on top, the
+   **progress dots** below them, and any **failures** at the bottom.
 
 ```bash
 step-forge -i                 # browse and pick from everything
@@ -160,17 +166,20 @@ population):
   every subsequent file change. Pressing Enter again forces a re-run.
 - **Editing the query** suspends auto-runs until you press Enter again — so you
   can retarget without a half-typed selection firing.
+- **↑ / ↓** move the selection highlight; **PgUp / PgDn** scroll the failures
+  pane when a run has more failures than fit on screen (the top stays pinned).
 - **Esc** disarms and returns to browsing.
-- **Ctrl-C** quits.
+- **Ctrl-C** quits and restores the terminal.
 
-A selection that resolves to a **single scenario** is run in `--verbose` mode and
-first passed through the analyzer so undefined/ambiguous steps and dependency
-problems surface before it runs. Broader populations use your configured
-reporter.
+A selection that resolves to a **single scenario** is first passed through the
+analyzer, so undefined/ambiguous steps and dependency problems surface (above the
+dots) before it runs.
 
 Each run executes in a fresh `step-forge` child process, so edited step
 definitions are always picked up — there is no stale module cache between runs.
-Recursive watching works on macOS, Windows, and modern Linux (Node ≥ 20 / Bun).
+The child streams its results back as an event stream, which the dashboard
+renders in place. Recursive watching works on macOS, Windows, and modern Linux
+(Node ≥ 20 / Bun).
 
 ## Hooks
 

@@ -5,6 +5,7 @@ import { ParsedFeature, parseFeatureCatalog } from "../analyzer/gherkinParser";
 import { globFiles } from "../globFiles";
 import { ResolvedConfig } from "./config";
 import { Prompt, Suggestion } from "./prompt";
+import { RunEvent } from "./reporters";
 import { watchFeatures, Watcher } from "./watcher";
 
 /**
@@ -145,7 +146,6 @@ class InteractiveSession {
       return;
     }
     this.running = true;
-    this.prompt.beginOutput();
     void this.runLoop();
   }
 
@@ -156,13 +156,14 @@ class InteractiveSession {
         if (this.armed) await this.executeOnce(this.armed);
       } while (this.rerunQueued && this.armed && !this.dirty);
     } catch (err) {
-      process.stdout.write(
-        red(`\n  run failed: ${err instanceof Error ? err.message : err}\n`)
+      this.prompt.failureBlock(
+        red(`run failed: ${err instanceof Error ? err.message : err}`)
       );
+      this.prompt.complete(0);
     } finally {
       this.running = false;
       this.prompt.status = this.status();
-      this.prompt.endOutput(); // redraws the prompt below the run's output
+      this.prompt.redraw();
     }
   }
 
@@ -177,24 +178,29 @@ class InteractiveSession {
   private async executeOnce(choice: Choice): Promise<void> {
     const selected = resolveScenarios(choice, this.scenarios());
 
-    const count = `${selected.length} scenario${selected.length === 1 ? "" : "s"}`;
-    process.stdout.write(
-      `\n${bold(`▶ ${choiceLabel(choice)}`)} ${dim(
-        `(${count} · run #${++this.runCount} · ${clock()})`
-      )}\n\n`
-    );
+    this.prompt.resetResults({
+      label: choiceLabel(choice),
+      scenarioCount: selected.length,
+      runCount: ++this.runCount,
+      clock: clock(),
+    });
 
     if (selected.length === 0) {
-      process.stdout.write(yellow("  no scenarios match this selection\n"));
+      this.prompt.note(yellow("  no scenarios match this selection"));
+      this.prompt.complete(0);
       return;
     }
 
-    // A single scenario is analyzed (dependency/undefined/ambiguous checks) and
-    // run verbose; a broader population uses the configured reporter.
+    // A single scenario is analyzed (dependency/undefined/ambiguous checks);
+    // its diagnostics feed the results region as notes above the dots.
     const single = selected.length === 1;
-    if (single) await this.analyzeScenario(selected[0]);
+    if (single) {
+      for (const line of await this.analyzeScenario(selected[0])) {
+        this.prompt.note(line);
+      }
+    }
 
-    await this.spawnRun(runArgs(choice, single, this.config));
+    await this.spawnRun(runArgs(choice, this.config));
   }
 
   /** Every scenario across the current catalog, flattened. */
@@ -203,43 +209,89 @@ class InteractiveSession {
   }
 
   /**
-   * Run `step-forge` as a child process with `args`, streaming its output to the
-   * terminal (where the erased prompt was). Re-invokes the very CLI that's
-   * running us (`process.execPath` + `argv[1]`), so it works identically from
-   * the source tree and the built bin. Never rejects — a spawn error is reported
-   * and swallowed so the watch loop survives.
+   * Run `step-forge --events` as a child process and feed its NDJSON event
+   * stream into the results region as it arrives — live tallies, dots, and
+   * failure blocks. Re-invokes the very CLI that's running us (`process.execPath`
+   * + `argv[1]`), so it works identically from the source tree and the built bin.
+   * `FORCE_COLOR` keeps the child's rendered failure blocks coloured even though
+   * its stdout is a pipe. Never rejects — errors are surfaced and swallowed so
+   * the watch loop survives.
    */
   private spawnRun(args: string[]): Promise<void> {
     return new Promise(resolve => {
       const child = spawn(process.execPath, [process.argv[1], ...args], {
         cwd: this.config.cwd,
-        // Own stdin ourselves (raw-mode prompt); let the child inherit our
-        // stdout/stderr so its reporter output lands above the prompt live.
-        stdio: ["ignore", "inherit", "inherit"],
+        env: { ...process.env, FORCE_COLOR: "1" },
+        // Own stdin ourselves (raw-mode prompt); capture stdout (the event
+        // stream) and stderr (a crash) so the parent owns all rendering.
+        stdio: ["ignore", "pipe", "pipe"],
       });
+
+      let completed = false;
+      let durationMs = 0;
+      let stdoutBuf = "";
+      let stderr = "";
+
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk: string) => {
+        stdoutBuf += chunk;
+        let nl: number;
+        while ((nl = stdoutBuf.indexOf("\n")) !== -1) {
+          const line = stdoutBuf.slice(0, nl);
+          stdoutBuf = stdoutBuf.slice(nl + 1);
+          if (!line.trim()) continue;
+          let evt: RunEvent;
+          try {
+            evt = JSON.parse(line) as RunEvent;
+          } catch {
+            continue; // ignore any non-event line
+          }
+          if (evt.t === "scenario") {
+            this.prompt.scenario(evt.status, evt.steps, evt.detail);
+          } else if (evt.t === "complete") {
+            completed = true;
+            durationMs = evt.durationMs;
+          }
+        }
+      });
+
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+
       child.on("error", err => {
-        process.stdout.write(red(`  could not start runner: ${err.message}\n`));
+        this.prompt.failureBlock(red(`could not start runner: ${err.message}`));
+        this.prompt.complete(0);
         resolve();
       });
-      child.on("close", () => resolve());
+      child.on("close", () => {
+        if (completed) {
+          this.prompt.complete(durationMs);
+        } else {
+          const detail = stderr.trim() || "(no output)";
+          this.prompt.failureBlock(
+            red(`runner exited without reporting results:\n${detail}`)
+          );
+          this.prompt.complete(0);
+        }
+        resolve();
+      });
     });
   }
 
   /**
-   * Run the static analyzer over a single scenario and print any dependency /
-   * undefined / ambiguous diagnostics. The analyzer needs the optional
-   * `typescript` peer for AST extraction; if it's absent we note that and skip,
-   * never failing the run.
+   * Run the static analyzer over a single scenario and return any dependency /
+   * undefined / ambiguous diagnostics as note lines for the results region. The
+   * analyzer needs the optional `typescript` peer for AST extraction; if it's
+   * absent we note that and skip, never failing the run.
    */
-  private async analyzeScenario(scenario: ParsedScenario): Promise<void> {
+  private async analyzeScenario(scenario: ParsedScenario): Promise<string[]> {
     let analyzer: typeof import("../analyzer/index");
     try {
       analyzer = await import("../analyzer/index");
     } catch {
-      process.stdout.write(
-        dim("  analysis skipped: install `typescript` to enable it\n\n")
-      );
-      return;
+      return [dim("  analysis skipped: install `typescript` to enable it")];
     }
     try {
       const stepFiles = await globFiles(this.config.steps, this.config.cwd);
@@ -248,13 +300,13 @@ class InteractiveSession {
       const diagnostics = analyzer.defaultRules.flatMap(rule =>
         rule.check(scenario, matched)
       );
-      printDiagnostics(diagnostics, this.config.cwd);
+      return formatDiagnostics(diagnostics, this.config.cwd);
     } catch (err) {
-      process.stdout.write(
+      return [
         dim(
-          `  analysis unavailable: ${err instanceof Error ? err.message : err}\n\n`
-        )
-      );
+          `  analysis unavailable: ${err instanceof Error ? err.message : err}`
+        ),
+      ];
     }
   }
 
@@ -364,13 +416,10 @@ function choiceLabel(choice: Choice): string {
  *   - feature → that single feature file
  *   - scenario → that feature file, name-anchored with `-n "/^…$/"` (the name is
  *     the outline name for an outline, so all its rows run)
- * A single scenario runs verbose; a population uses the configured reporter.
+ * Always `--events`: the child emits its NDJSON run stream and the TUI renders
+ * the results region itself.
  */
-function runArgs(
-  choice: Choice,
-  single: boolean,
-  config: ResolvedConfig
-): string[] {
+function runArgs(choice: Choice, config: ResolvedConfig): string[] {
   const args: string[] = [];
   for (const glob of config.steps) args.push("-s", glob);
   if (config.world) args.push("-w", config.world);
@@ -388,12 +437,7 @@ function runArgs(
       break;
   }
 
-  if (single) {
-    args.push("-v");
-  } else {
-    args.push("-r", config.reporter);
-    if (config.verbose) args.push("-v");
-  }
+  args.push("--events");
   return args;
 }
 
@@ -411,12 +455,12 @@ function clock(): string {
 }
 
 // --- diagnostics -----------------------------------------------------------
-function printDiagnostics(
+function formatDiagnostics(
   diagnostics: import("../analyzer/types").Diagnostic[],
   cwd: string
-): void {
-  if (diagnostics.length === 0) return; // clean scenario: say nothing, let the run speak
-  process.stdout.write(bold("  analyzer:\n"));
+): string[] {
+  if (diagnostics.length === 0) return []; // clean scenario: say nothing, let the run speak
+  const lines = [bold("  analyzer:")];
   for (const d of diagnostics) {
     const mark =
       d.severity === "error"
@@ -425,7 +469,7 @@ function printDiagnostics(
           ? yellow("!")
           : dim("i");
     const loc = `${path.relative(cwd, d.file)}:${d.range.startLine}`;
-    process.stdout.write(`  ${mark} ${d.message} ${dim(`(${loc})`)}\n`);
+    lines.push(`  ${mark} ${d.message} ${dim(`(${loc})`)}`);
   }
-  process.stdout.write("\n");
+  return lines;
 }

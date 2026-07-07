@@ -21,9 +21,29 @@ export interface ReporterOptions {
   verbose?: boolean;
 }
 
+/**
+ * One NDJSON line emitted by {@link eventsReporter}. This is the internal
+ * parent↔child channel for `step-forge -i`: the TUI spawns a child runner with
+ * `--events` and renders the results region itself from these events, so it can
+ * pin the layout and reorder it (stats above dots above failures). Not a public
+ * or stable schema — it exists only for interactive mode.
+ */
+export type RunEvent =
+  | {
+      t: "scenario";
+      status: "passed" | "failed" | "skipped";
+      name: string;
+      /** Per-scenario step counts, so the parent can tally steps live. */
+      steps: { passed: number; failed: number; skipped: number };
+      /** Rendered Cucumber failure block; present only when the scenario failed. */
+      detail?: string;
+    }
+  | { t: "complete"; durationMs: number };
+
 // --- ANSI colouring -------------------------------------------------------
 const useColor =
-  !process.env.NO_COLOR && (process.stdout.isTTY ?? false) === true;
+  !process.env.NO_COLOR &&
+  (!!process.env.FORCE_COLOR || (process.stdout.isTTY ?? false) === true);
 
 const wrap = (open: number, close: number) => (s: string) =>
   useColor ? `\x1b[${open}m${s}\x1b[${close}m` : s;
@@ -42,17 +62,35 @@ const STATUS_MARK: Record<StepResult["status"], string> = {
   skipped: c.yellow("-"),
 };
 
+/** Display status of a whole scenario (skipped = every step skipped). */
+function scenarioStatus(
+  result: ScenarioResult
+): "passed" | "failed" | "skipped" {
+  if (result.status === "failed") return "failed";
+  if (result.steps.every(s => s.status === "skipped")) return "skipped";
+  return "passed";
+}
+
+/** The scenario's display name, prefixed with its outline name for outline rows. */
+function scenarioLabel(result: ScenarioResult): string {
+  return result.scenario.outline
+    ? `${result.scenario.outline.name} › ${result.scenario.name}`
+    : result.scenario.name;
+}
+
 /** ✓ / ✗ / - for a whole scenario (skipped = every step skipped). */
 function scenarioMark(result: ScenarioResult): string {
-  if (result.status === "failed") return c.red("✗");
-  if (result.steps.every(s => s.status === "skipped")) return c.yellow("-");
+  const status = scenarioStatus(result);
+  if (status === "failed") return c.red("✗");
+  if (status === "skipped") return c.yellow("-");
   return c.green("✓");
 }
 
 /** Dot per scenario for the live heartbeat: `.` pass / `F` fail / `-` skip. */
 function scenarioDot(result: ScenarioResult): string {
-  if (result.status === "failed") return c.red("F");
-  if (result.steps.every(s => s.status === "skipped")) return c.yellow("-");
+  const status = scenarioStatus(result);
+  if (status === "failed") return c.red("F");
+  if (status === "skipped") return c.yellow("-");
   return c.green(".");
 }
 
@@ -111,10 +149,9 @@ function renderScenario(
   cwd: string,
   opts: { stepSource: boolean }
 ): string {
-  const label = result.scenario.outline
-    ? `${result.scenario.outline.name} › ${result.scenario.name}`
-    : result.scenario.name;
-  const lines: string[] = [`${scenarioMark(result)} ${c.bold(label)}`];
+  const lines: string[] = [
+    `${scenarioMark(result)} ${c.bold(scenarioLabel(result))}`,
+  ];
 
   const loc = result.scenario.line
     ? `${relative(cwd, result.scenario.file)}:${result.scenario.line}`
@@ -271,4 +308,35 @@ export function makeReporter(
   opts: ReporterOptions = {}
 ): Reporter {
   return name === "progress" ? progressReporter(opts) : prettyReporter(opts);
+}
+
+/**
+ * Internal reporter for interactive mode. Emits one {@link RunEvent} per line
+ * (NDJSON) and nothing human-facing, so a parent process can parse the stream
+ * and own the rendering. Failure detail reuses {@link renderScenario} verbatim,
+ * so the TUI's failures pane matches the non-interactive output.
+ */
+export function eventsReporter(opts: ReporterOptions = {}): Reporter {
+  const cwd = opts.cwd ?? process.cwd();
+  const emit = (evt: RunEvent): void => write(`${JSON.stringify(evt)}\n`);
+  return {
+    onScenarioEnd(result) {
+      const steps = { passed: 0, failed: 0, skipped: 0 };
+      for (const s of result.steps) steps[s.status]++;
+      const status = scenarioStatus(result);
+      emit({
+        t: "scenario",
+        status,
+        name: scenarioLabel(result),
+        steps,
+        detail:
+          status === "failed"
+            ? renderScenario(result, cwd, { stepSource: false })
+            : undefined,
+      });
+    },
+    onComplete(_results, durationMs) {
+      emit({ t: "complete", durationMs });
+    },
+  };
 }

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { loadConfigFile, resolveConfig, RunnerOptions } from "./config";
 import { run } from "./runner";
 import { runInteractive } from "./interactive";
+import { eventsReporter } from "./reporters";
 
 const HELP = `step-forge — native TypeScript runner for Gherkin step definitions
 
@@ -31,6 +32,7 @@ function parseCli(argv: string[]): {
   cwd: string;
   overrides: RunnerOptions;
   interactive: boolean;
+  events: boolean;
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -44,6 +46,9 @@ function parseCli(argv: string[]): {
       reporter: { type: "string", short: "r" },
       verbose: { type: "boolean", short: "v" },
       interactive: { type: "boolean", short: "i" },
+      // Hidden: emit NDJSON run events instead of human output. Used by the
+      // interactive TUI, which spawns a child runner and renders results itself.
+      events: { type: "boolean" },
       config: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -78,18 +83,27 @@ function parseCli(argv: string[]): {
   const cwd = values.config
     ? path.resolve(process.cwd(), values.config)
     : process.cwd();
-  return { cwd, overrides, interactive: values.interactive ?? false };
+  return {
+    cwd,
+    overrides,
+    interactive: values.interactive ?? false,
+    events: values.events ?? false,
+  };
 }
 
 async function main(): Promise<void> {
-  const { cwd, overrides, interactive } = parseCli(process.argv.slice(2));
+  const { cwd, overrides, interactive, events } = parseCli(
+    process.argv.slice(2)
+  );
   const fileConfig = await loadConfigFile(cwd);
   const config = resolveConfig(cwd, fileConfig, overrides);
   if (interactive) {
     await runInteractive(config);
     return; // interactive mode manages its own lifecycle and exit code
   }
-  const { passed } = await run(config);
+  const { passed } = events
+    ? await run(config, eventsReporter({ cwd: config.cwd }))
+    : await run(config);
   process.exitCode = passed ? 0 : 1;
 }
 

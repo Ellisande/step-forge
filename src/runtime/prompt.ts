@@ -1,15 +1,19 @@
 import * as readline from "node:readline";
 
 /**
- * A hand-rolled, dependency-free typeahead prompt for interactive mode. It owns
- * the terminal's raw-mode input and renders a block pinned to the bottom of the
- * screen: a scrollable list of suggestions above a `> query` input line. Run
- * output is meant to scroll *above* this block — {@link Prompt.printAbove} erases
- * the block, lets a caller write, then redraws it lower down.
+ * A hand-rolled, dependency-free full-screen TUI for interactive mode. It owns
+ * the terminal's raw-mode input and the **alternate screen buffer**, and paints
+ * three stacked regions top-to-bottom:
  *
- * The prompt is pure view + input: it filters/ranks {@link Suggestion}s by the
- * typed query and reports intent through callbacks ({@link PromptHandlers}), but
- * holds no run/watch logic. The orchestrator wires those callbacks.
+ *   1. prompt  — the `› query` input line plus a status hint
+ *   2. selection — the scrollable typeahead list of suggestions
+ *   3. results — the current run, itself ordered stats → dots → failures
+ *
+ * The prompt/selection are pure view + input: they filter/rank {@link Suggestion}s
+ * by the typed query and report intent through callbacks ({@link PromptHandlers}).
+ * The results region is a small model the orchestrator drives as a run streams
+ * ({@link Prompt.resetResults} / {@link Prompt.scenario} / {@link Prompt.complete}),
+ * so stats can sit *above* the dots and the failures pane can scroll on its own.
  */
 export interface Suggestion {
   /** Human label shown after the badge, e.g. a scenario name. */
@@ -37,10 +41,50 @@ export interface PromptOptions {
   handlers: PromptHandlers;
   /** Input prefix. Default `"› "`. */
   prefix?: string;
-  /** Max suggestion rows shown at once. Default `10`. */
+  /** Max suggestion rows shown at once. Default `8`. */
   maxVisible?: number;
   /** Initial query text. */
   initialQuery?: string;
+}
+
+/** Header describing the run currently shown in the results region. */
+export interface RunHeader {
+  label: string;
+  scenarioCount: number;
+  runCount: number;
+  clock: string;
+}
+
+interface Counts {
+  passed: number;
+  failed: number;
+  skipped: number;
+}
+
+/** Mutable model of the run currently rendered in the results region. */
+interface ResultsState {
+  header?: RunHeader;
+  running: boolean;
+  durationMs?: number;
+  scenarios: Counts;
+  steps: Counts;
+  /** One rendered dot char per finished scenario (`.`/`F`/`-`). */
+  dots: string[];
+  /** Rendered Cucumber failure blocks (each multi-line). */
+  failures: string[];
+  /** Extra lines above the dots: analyzer diagnostics, errors, empty notices. */
+  notes: string[];
+}
+
+function freshResults(): ResultsState {
+  return {
+    running: false,
+    scenarios: { passed: 0, failed: 0, skipped: 0 },
+    steps: { passed: 0, failed: 0, skipped: 0 },
+    dots: [],
+    failures: [],
+    notes: [],
+  };
 }
 
 // --- ANSI ------------------------------------------------------------------
@@ -50,6 +94,8 @@ const wrap = (open: number, close: number) => (s: string) =>
   useColor ? `\x1b[${open}m${s}\x1b[${close}m` : s;
 const color = {
   green: wrap(32, 39),
+  red: wrap(31, 39),
+  yellow: wrap(33, 39),
   cyan: wrap(36, 39),
   dim: wrap(2, 22),
   bold: wrap(1, 22),
@@ -78,20 +124,21 @@ export class Prompt {
   private selected = 0; // index into `matches`
   private window = 0; // first visible match index
 
-  /** Optional dim status line shown just above the input (set by the caller). */
+  /** Optional dim status line shown just below the input (set by the caller). */
   status = "";
 
-  /** Lines the pinned block currently occupies, so a redraw can erase them. */
-  private rendered = 0;
+  private results = freshResults();
+  private failScroll = 0; // top line offset of the failures pane
+
   private started = false;
-  /** While true the block is hidden so a run's output can own the screen. */
-  private suspended = false;
   private keyListener?: (str: string, key: readline.Key) => void;
+  private resizeListener?: () => void;
+  private signalCleanup?: () => void;
 
   constructor(options: PromptOptions) {
     this.handlers = options.handlers;
     this.prefix = options.prefix ?? "› ";
-    this.maxVisible = options.maxVisible ?? 10;
+    this.maxVisible = options.maxVisible ?? 8;
     this.query = options.initialQuery ?? "";
     this.cursor = this.query.length;
   }
@@ -107,50 +154,110 @@ export class Prompt {
     return this.query;
   }
 
-  /** Enter raw mode, attach the keypress listener, and draw the block. */
+  // --- results model (driven by the orchestrator as a run streams) ---------
+  /** Start a fresh run: reset counts/dots/failures and record its header. */
+  resetResults(header: RunHeader): void {
+    this.results = freshResults();
+    this.results.header = header;
+    this.results.running = true;
+    this.failScroll = 0;
+    this.render();
+  }
+
+  /** Append a note line above the dots (diagnostics, errors, empty notices). */
+  note(line: string): void {
+    this.results.notes.push(line);
+    this.render();
+  }
+
+  /** Push a standalone block into the scrollable failures pane (e.g. a crash). */
+  failureBlock(text: string): void {
+    this.results.failures.push(text);
+    this.render();
+  }
+
+  /** Record one finished scenario: tally it, add its dot, keep any failure block. */
+  scenario(status: keyof Counts, steps: Counts, detail?: string): void {
+    this.results.scenarios[status]++;
+    this.results.steps.passed += steps.passed;
+    this.results.steps.failed += steps.failed;
+    this.results.steps.skipped += steps.skipped;
+    this.results.dots.push(dotFor(status));
+    if (detail) this.results.failures.push(detail);
+    this.render();
+  }
+
+  /** Mark the run finished and record its wall-clock duration. */
+  complete(durationMs: number): void {
+    this.results.running = false;
+    this.results.durationMs = durationMs;
+    this.render();
+  }
+
+  // --- lifecycle -----------------------------------------------------------
+  /** Enter the alternate screen + raw mode, attach listeners, and paint. */
   start(): void {
     if (this.started) return;
     this.started = true;
     readline.emitKeypressEvents(process.stdin);
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    write("\x1b[?1049h"); // switch to the alternate screen buffer
     this.keyListener = (str, key) => this.onKey(str, key ?? {});
     process.stdin.on("keypress", this.keyListener);
     process.stdin.resume();
+    this.resizeListener = () => this.render();
+    process.stdout.on("resize", this.resizeListener);
+    this.installSafetyNet();
     this.render();
   }
 
-  /** Erase the block, restore cooked mode, and detach the listener. */
+  /** Restore the terminal: leave the alt buffer, cooked mode, cursor visible. */
   stop(): void {
     if (!this.started) return;
     this.started = false;
-    this.erase();
-    write("\x1b[?25h"); // ensure the cursor is visible again
     if (this.keyListener) process.stdin.off("keypress", this.keyListener);
-    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    if (this.resizeListener) process.stdout.off("resize", this.resizeListener);
+    this.signalCleanup?.();
+    this.restoreTerminal();
     process.stdin.pause();
   }
 
-  /**
-   * Erase the pinned block and hide it for the duration of an (async) run, so
-   * everything written to stdout in the meantime scrolls where the prompt was.
-   * Keypresses still update state but don't repaint until {@link endOutput}.
-   */
-  beginOutput(): void {
-    if (!this.started) return;
-    this.erase();
-    this.suspended = true;
-  }
-
-  /** Redraw the pinned block below whatever output {@link beginOutput} let through. */
-  endOutput(): void {
-    if (!this.started) return;
-    this.suspended = false;
-    this.render();
-  }
-
-  /** Force a redraw (after mutating `status`, say). No-op while suspended. */
+  /** Force a repaint (after mutating `status`, say). No-op until started. */
   redraw(): void {
-    if (this.started && !this.suspended) this.render();
+    if (this.started) this.render();
+  }
+
+  /**
+   * Leave raw mode and the alternate screen buffer and show the cursor.
+   * Idempotent and synchronous so it is safe from an `exit`/signal handler —
+   * a crash or `kill` must never strand the terminal in raw/alt-buffer mode.
+   */
+  private restoreTerminal(): void {
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    write("\x1b[?25h"); // show cursor
+    write("\x1b[?1049l"); // leave the alternate screen buffer
+  }
+
+  /**
+   * Register process-level handlers so the terminal is always restored, even on
+   * `kill` (SIGTERM), a crash (`exit` fires with a non-zero code), or a stray
+   * SIGINT. In raw mode Ctrl-C arrives as a keypress (handled by `onKey`), not a
+   * signal, so these are a safety net rather than the normal quit path.
+   */
+  private installSafetyNet(): void {
+    const onExit = (): void => this.restoreTerminal();
+    const onSignal = (): void => {
+      this.restoreTerminal();
+      process.exit(130);
+    };
+    process.on("exit", onExit);
+    process.on("SIGINT", onSignal);
+    process.on("SIGTERM", onSignal);
+    this.signalCleanup = () => {
+      process.off("exit", onExit);
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+    };
   }
 
   // --- input ---------------------------------------------------------------
@@ -174,6 +281,12 @@ export class Prompt {
         return;
       case "down":
         this.move(1);
+        return;
+      case "pageup":
+        this.scrollFailures(-1);
+        return;
+      case "pagedown":
+        this.scrollFailures(1);
         return;
       case "left":
         this.cursor = Math.max(0, this.cursor - 1);
@@ -242,6 +355,13 @@ export class Prompt {
     this.render();
   }
 
+  /** Scroll the failures pane by a page (clamped in {@link render}). */
+  private scrollFailures(pages: number): void {
+    this.failScroll = Math.max(0, this.failScroll + pages * this.failPage);
+    this.render();
+  }
+  private failPage = 1; // last-rendered pane height, for page scrolling
+
   private refilter(): void {
     const q = this.query.trim().toLowerCase();
     this.matches = this.all
@@ -260,63 +380,208 @@ export class Prompt {
   }
 
   // --- rendering -----------------------------------------------------------
-  /** Build the block's lines, top (suggestions) to bottom (input). */
-  private buildLines(): string[] {
-    const lines: string[] = [];
-    const total = this.matches.length;
+  private rows(): number {
+    return process.stdout.rows && process.stdout.rows > 0
+      ? process.stdout.rows
+      : 24;
+  }
+  private cols(): number {
+    return process.stdout.columns && process.stdout.columns > 0
+      ? process.stdout.columns
+      : 80;
+  }
 
+  /** Prompt + selection lines. The input line is always row 0. */
+  private topLines(): string[] {
+    const lines: string[] = [];
+    lines.push(`${color.bold(this.prefix)}${this.query}`);
+    if (this.status) lines.push(color.dim(this.status));
+    lines.push("");
+
+    const total = this.matches.length;
     if (this.query.trim() && total === 0) {
       lines.push(color.dim("  no matching tag, feature, or scenario"));
     }
-
     const end = Math.min(this.window + this.maxVisible, total);
     for (let i = this.window; i < end; i++) {
       const s = this.matches[i];
       const active = i === this.selected;
-      const badge = color.cyan(s.badge.padEnd(9));
-      const row = `${badge} ${s.label}`;
+      const row = `${color.cyan(s.badge.padEnd(9))} ${s.label}`;
       lines.push(active ? color.inverse(`❯ ${row}`) : `  ${row}`);
     }
-    if (total > end) {
-      lines.push(color.dim(`  …and ${total - end} more`));
+    if (total > end) lines.push(color.dim(`  …and ${total - end} more`));
+    return lines;
+  }
+
+  /** Stats (header + summary) and the wrapped dots, above the failures pane. */
+  private resultLines(cols: number): string[] {
+    const lines: string[] = ["", divider("results", cols)];
+    const r = this.results;
+    if (!r.header) {
+      lines.push(
+        color.dim("  no run yet — press enter to run the highlighted selection")
+      );
+      return lines;
     }
 
-    if (this.status) lines.push(color.dim(this.status));
-    lines.push(`${color.bold(this.prefix)}${this.query}`);
+    // --- stats (top): header, live tallies, duration -----------------------
+    const done = r.scenarios.passed + r.scenarios.failed + r.scenarios.skipped;
+    lines.push(
+      `  ${color.bold(`▶ ${r.header.label}`)} ${color.dim(
+        `(run #${r.header.runCount} · ${r.header.clock})`
+      )}`
+    );
+    const scenarioTotal = r.running
+      ? `${done}/${r.header.scenarioCount}`
+      : done;
+    lines.push(
+      `  ${countLine(String(scenarioTotal), "scenario", r.scenarios)}`
+    );
+    const stepTotal = r.steps.passed + r.steps.failed + r.steps.skipped;
+    lines.push(`  ${countLine(String(stepTotal), "step", r.steps)}`);
+    lines.push(
+      r.running
+        ? color.dim("  running…")
+        : color.dim(`  ${((r.durationMs ?? 0) / 1000).toFixed(2)}s`)
+    );
+
+    for (const n of r.notes) lines.push(n);
+
+    // --- dots (middle): the live heartbeat, wrapped, tail-capped -----------
+    if (r.dots.length) {
+      lines.push("");
+      const per = Math.max(1, cols - 2);
+      const dotRows: string[] = [];
+      for (let i = 0; i < r.dots.length; i += per) {
+        dotRows.push(`  ${r.dots.slice(i, i + per).join("")}`);
+      }
+      const maxDotRows = 6;
+      if (dotRows.length > maxDotRows) {
+        const hidden = dotRows.length - maxDotRows;
+        lines.push(
+          color.dim(`  …${hidden} earlier row${hidden === 1 ? "" : "s"}`)
+        );
+        lines.push(...dotRows.slice(-maxDotRows));
+      } else {
+        lines.push(...dotRows);
+      }
+    }
     return lines;
   }
 
   private render(): void {
-    if (this.suspended) return; // a run owns the screen; don't repaint over it
-    write("\x1b[?25l"); // hide caret while we repaint
-    this.moveToBlockStart();
-    write("\x1b[0J"); // clear from here to end of screen
-    const lines = this.buildLines();
-    write(lines.join("\r\n"));
-    this.rendered = lines.length;
+    if (!this.started) return;
+    const cols = this.cols();
+    const rows = this.rows();
+
+    const top = this.topLines();
+    const caretCol = Math.min(stringWidth(this.prefix) + this.cursor + 1, cols);
+
+    const above = [...top, ...this.resultLines(cols)];
+
+    // The failures pane fills the rest of the screen and scrolls on its own.
+    const failLines = flattenFailures(this.results.failures);
+    const lines = [...above];
+    if (failLines.length) {
+      lines.push(
+        "",
+        divider(`failures (${this.results.failures.length})`, cols)
+      );
+      // Reserve one row for the scroll indicator.
+      const pane = Math.max(1, rows - lines.length - 1);
+      this.failPage = pane;
+      const maxScroll = Math.max(0, failLines.length - pane);
+      const off = Math.min(this.failScroll, maxScroll);
+      this.failScroll = off;
+      lines.push(...failLines.slice(off, off + pane));
+      if (maxScroll > 0) {
+        lines.push(
+          color.dim(
+            `  [${off + 1}-${off + Math.min(pane, failLines.length - off)}/${failLines.length}] · PgUp/PgDn to scroll`
+          )
+        );
+      }
+    }
+
+    // Repaint: home, write each clipped line clearing to EOL, wipe below.
+    write("\x1b[?25l\x1b[H");
+    const visible = lines.slice(0, rows).map(l => `${clip(l, cols)}\x1b[K`);
+    write(visible.join("\r\n"));
+    write("\x1b[J"); // clear anything left below our content
     // Park the caret on the input line at the right column.
-    write(`\r\x1b[${stringWidth(this.prefix) + this.cursor}C`);
+    write(`\x1b[1;${Math.max(1, caretCol)}H`);
     write("\x1b[?25h");
   }
+}
 
-  /** Erase the block and leave the caret at the block's top-left. */
-  private erase(): void {
-    this.moveToBlockStart();
-    write("\x1b[0J");
-    this.rendered = 0;
-  }
+/** A green `.` / red `F` / yellow `-` for a finished scenario. */
+function dotFor(status: keyof Counts): string {
+  if (status === "failed") return color.red("F");
+  if (status === "skipped") return color.yellow("-");
+  return color.green(".");
+}
 
-  /** Move the caret to column 0 of the block's first line. */
-  private moveToBlockStart(): void {
-    if (this.rendered > 1) write(`\x1b[${this.rendered - 1}A`);
-    write("\r");
-  }
+/** `<total> <noun>s (X passed, Y failed, Z skipped)`, zero parts omitted. */
+function countLine(total: string, noun: string, counts: Counts): string {
+  const part = (n: number, label: string, paint: (s: string) => string) =>
+    n > 0 ? paint(`${n} ${label}`) : null;
+  const parts = [
+    part(counts.passed, "passed", color.green),
+    part(counts.failed, "failed", color.red),
+    part(counts.skipped, "skipped", color.yellow),
+  ].filter((x): x is string => x !== null);
+  const plural = total === "1" ? "" : "s";
+  const detail = parts.length ? ` (${parts.join(", ")})` : "";
+  return `${total} ${noun}${plural}${detail}`;
+}
+
+/** Flatten failure blocks into lines, a blank line between blocks. */
+function flattenFailures(blocks: string[]): string[] {
+  const out: string[] = [];
+  blocks.forEach((block, i) => {
+    if (i > 0) out.push("");
+    out.push(...block.split("\n"));
+  });
+  return out;
+}
+
+/** A dim `── label ─────` rule spanning the given width. */
+function divider(label: string, cols: number): string {
+  const head = `── ${label} `;
+  const fill = Math.max(0, cols - head.length);
+  return color.dim(head + "─".repeat(fill));
 }
 
 /** Visible width, ignoring the ANSI escapes our color helpers may inject. */
 function stringWidth(s: string): number {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
+
+/**
+ * Truncate `s` to `max` visible columns, preserving ANSI color escapes (which
+ * have zero width) and re-resetting at the cut so a clipped color can't bleed.
+ */
+function clip(s: string, max: number): string {
+  let width = 0;
+  let out = "";
+  // eslint-disable-next-line no-control-regex
+  const escape = /^\x1b\[[0-9;]*m/;
+  let i = 0;
+  while (i < s.length) {
+    const rest = s.slice(i);
+    const m = escape.exec(rest);
+    if (m) {
+      out += m[0];
+      i += m[0].length;
+      continue;
+    }
+    if (width >= max) return `${out}\x1b[0m`;
+    out += s[i];
+    width++;
+    i++;
+  }
+  return out;
 }
 
 function write(s: string): void {
