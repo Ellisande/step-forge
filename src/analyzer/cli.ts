@@ -55,9 +55,7 @@ async function main() {
   const config = parseArgs(args);
 
   if (config.stepFiles.length === 0 || config.featureFiles.length === 0) {
-    console.error(
-      "Error: Both --steps and --features are required.\n"
-    );
+    console.error("Error: Both --steps and --features are required.\n");
     printUsage();
     process.exit(1);
   }
@@ -69,8 +67,8 @@ async function main() {
     process.exit(0);
   }
 
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  const warnings = diagnostics.filter((d) => d.severity === "warning");
+  const errors = diagnostics.filter(d => d.severity === "error");
+  const warnings = diagnostics.filter(d => d.severity === "warning");
 
   for (const diag of diagnostics) {
     console.log(formatDiagnostic(diag));
@@ -89,7 +87,7 @@ const isDirectRun =
   process.argv[1]?.endsWith("analyzer-cli.ts");
 
 if (isDirectRun) {
-  main().catch((err) => {
+  main().catch(err => {
     console.error("Analyzer failed:", err);
     process.exit(1);
   });

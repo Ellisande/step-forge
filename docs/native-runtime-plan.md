@@ -13,16 +13,17 @@ skipped`) so we can flip over deliberately later.
 
 New modules under `src/runtime/`:
 
-| File | Role |
-|---|---|
-| `cli.ts` | `#!/usr/bin/env bun` entry — `node:util` `parseArgs`, flags, exit codes |
-| `config.ts` | loads `step-forge.config.ts` natively, merges CLI overrides, defaults |
-| `runner.ts` | discover → import steps → parse → compile-once → filter → concurrency-capped run → report |
-| `filter.ts` | dependency-free Cucumber tag-expression evaluator + name / `@only` / `@skip` |
-| `reporters.ts` | `pretty` (Cucumber tree) + `progress` (dots), NO_COLOR/TTY-aware |
-| `../globFiles.ts` | shared portable glob (see divergence #1) |
+| File              | Role                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `cli.ts`          | `#!/usr/bin/env bun` entry — `node:util` `parseArgs`, flags, exit codes                   |
+| `config.ts`       | loads `step-forge.config.ts` natively, merges CLI overrides, defaults                     |
+| `runner.ts`       | discover → import steps → parse → compile-once → filter → concurrency-capped run → report |
+| `filter.ts`       | dependency-free Cucumber tag-expression evaluator + name / `@only` / `@skip`              |
+| `reporters.ts`    | `pretty` (Cucumber tree) + `progress` (dots), NO_COLOR/TTY-aware                          |
+| `../globFiles.ts` | shared portable glob (see divergence #1)                                                  |
 
 Plus the agreed **`engine.ts` refactor**:
+
 - `compileRegistry()` — compile Cucumber expressions **once per run** (was
   recompiling per scenario: O(scenarios × steps) waste).
 - `runScenario()` is now **non-throwing** — returns a `ScenarioResult` carrying
@@ -58,7 +59,7 @@ worker)` that returns results in input order; `--concurrency N` opts in, default
 `1`.
 
 **Why this is safe without isolation machinery:** the framework's opinionated
-invariant — *module state is immutable and scenario-isolated* — is exactly what
+invariant — _module state is immutable and scenario-isolated_ — is exactly what
 makes in-process parallelism race-free. All mutable scenario state lives in the
 per-scenario world (already isolated); module state is write-once config / pure
 lookups. Given that invariant, concurrent scenarios cannot corrupt each other, so
@@ -92,6 +93,7 @@ Node portability isn't required — unlike consumer-facing code). Run with
 ## Backlog (parked — work on later)
 
 ### Flip the default runner — DONE
+
 - `npm test` now runs `bun test src/runtime` (unit) + `bun src/runtime/cli.ts`
   (features). Vitest fully removed: deleted `vitest.config.ts` and
   `src/runtime/vitest.ts`, dropped the `/vitest` package export + its tsdown
@@ -100,6 +102,7 @@ Node portability isn't required — unlike consumer-facing code). Run with
   historical decisions log and still references the old Vitest mechanism.
 
 ### Publishing wiring — DONE
+
 - `step-forge` bin → `./dist/cli.js` in `package.json`.
 - CLI added to the **same** tsdown build group as `step-forge` + `runtime` (not
   its own group) so all three share the single `globalRegistry` chunk. Verified:
@@ -112,12 +115,14 @@ Node portability isn't required — unlike consumer-facing code). Run with
   suite → exit 0, undefined step → exit 1 with a `.feature` code frame.
 
 ### Phase 2 — parity & polish
+
 - Worker-pool execution mode (ties into the concurrency work above).
 - Watch mode (`node:fs.watch`/chokidar; re-run affected features).
 - JUnit + JSON reporters for CI.
 - `--bail`, retries.
 
 ### Phase 3 — DX
+
 - Source-map-aware stack traces.
 - `--only-failures`.
 - Coverage integration.

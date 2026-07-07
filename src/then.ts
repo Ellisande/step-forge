@@ -23,10 +23,7 @@ type ThenInput<Variables, Given, When, Then> = {
   then: Then;
 };
 type ThenOutput<ThenState> =
-  | Partial<ThenState>
-  | Promise<Partial<ThenState>>
-  | void
-  | Promise<void>;
+  Partial<ThenState> | Promise<Partial<ThenState>> | void | Promise<void>;
 
 const thenDependencies =
   <Variables, GivenState, WhenState, ThenState>(

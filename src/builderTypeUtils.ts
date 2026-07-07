@@ -22,9 +22,9 @@ export type FullDependencies = {
  * are dropped. This is the shape a step function sees for `given`/`when`/`then`.
  */
 export type Restrict<State, Deps extends RequiredOrOptional<State>> = {
-  [K in keyof State as K extends keyof Deps
-    ? K
-    : never]: Deps[K] extends "optional" ? State[K] | undefined : State[K];
+  [
+    K in keyof State as K extends keyof Deps ? K : never
+  ]: Deps[K] extends "optional" ? State[K] | undefined : State[K];
 };
 
 export type GetFunctionArgs<T> = T extends (...args: infer A) => any

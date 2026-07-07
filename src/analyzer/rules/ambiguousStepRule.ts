@@ -8,15 +8,12 @@ import {
 export const ambiguousStepRule: AnalysisRule = {
   name: "ambiguous-step",
 
-  check(
-    scenario: ParsedScenario,
-    matchedSteps: MatchedStep[]
-  ): Diagnostic[] {
+  check(scenario: ParsedScenario, matchedSteps: MatchedStep[]): Diagnostic[] {
     return matchedSteps
-      .filter((step) => step.definitions.length > 1)
-      .map((step) => {
+      .filter(step => step.definitions.length > 1)
+      .map(step => {
         const locations = step.definitions
-          .map((d) => `${d.sourceFile}:${d.line}`)
+          .map(d => `${d.sourceFile}:${d.line}`)
           .join(", ");
         return {
           file: scenario.file,

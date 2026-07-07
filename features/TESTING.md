@@ -4,12 +4,12 @@ All tests run natively under **Bun** in a self-testing pattern: feature files in
 
 ## Test Scripts
 
-| Script                      | Description                                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------- |
-| `bun run test`              | Runtime unit tests (`bun test`) then all feature tests (the Bun runner). Normal development. |
-| `bun run test:unit`         | Runtime unit tests only (`bun test src/runtime`).                                            |
-| `bun run test:features`     | Feature tests only (`bun src/runtime/cli.ts`). The default `pretty` reporter shows per-step detail. |
-| `bun run test:ci`           | Alias for `bun run test`.                                                                    |
+| Script                  | Description                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `bun run test`          | Runtime unit tests (`bun test`) then all feature tests (the Bun runner). Normal development.        |
+| `bun run test:unit`     | Runtime unit tests only (`bun test src/runtime`).                                                   |
+| `bun run test:features` | Feature tests only (`bun src/runtime/cli.ts`). The default `pretty` reporter shows per-step detail. |
+| `bun run test:ci`       | Alias for `bun run test`.                                                                           |
 
 Use `bun run test`, not `bun test` (the latter is Bun's native runner and would skip the feature suite). Run a subset by passing globs or filters to the runner: `bun src/runtime/cli.ts features/basic.feature` (by file), `--name "part of the scenario name"` (by name), or `--tags "@foo and not @bar"` (by tag).
 

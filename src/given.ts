@@ -24,8 +24,7 @@ type GivenInput<Variables, Given> = {
   then: never;
 };
 type GivenOutput<GivenState> =
-  | Partial<GivenState>
-  | Promise<Partial<GivenState>>;
+  Partial<GivenState> | Promise<Partial<GivenState>>;
 
 const givenDependencies =
   <Variables, GivenState>(

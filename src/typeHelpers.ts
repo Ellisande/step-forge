@@ -1,5 +1,6 @@
 type Prettify<T> = {
   [K in keyof T]: T[K];
+  // eslint-disable-next-line @typescript-eslint/ban-types -- `& {}` forces TS to eagerly expand the mapped type in tooltips
 } & {};
 
 /**
@@ -18,16 +19,20 @@ export type StateFromDependencies<
   Deps extends { [K in keyof Deps]: "required" | "optional" },
 > = Prettify<
   {
-    [K in keyof Deps as K extends keyof State
-      ? Deps[K] extends "required"
-        ? K
+    [
+      K in keyof Deps as K extends keyof State
+        ? Deps[K] extends "required"
+          ? K
+          : never
         : never
-      : never]: State[Extract<K, keyof State>];
+    ]: State[Extract<K, keyof State>];
   } & {
-    [K in keyof Deps as K extends keyof State
-      ? Deps[K] extends "optional"
-        ? K
+    [
+      K in keyof Deps as K extends keyof State
+        ? Deps[K] extends "optional"
+          ? K
+          : never
         : never
-      : never]?: State[Extract<K, keyof State>];
+    ]?: State[Extract<K, keyof State>];
   }
 >;

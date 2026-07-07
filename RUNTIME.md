@@ -93,16 +93,16 @@ npm install --save-dev @step-forge/step-forge
 Config is resolved from three sources, later ones overriding earlier ones:
 **defaults → `step-forge.config.ts` → CLI flags**. Every field is optional.
 
-| Field         | Type                      | Default            | Meaning                                                                 |
-| ------------- | ------------------------- | ------------------ | ----------------------------------------------------------------------- |
-| `features`    | `string \| string[]`      | `**/*.feature`     | Feature-file glob(s), relative to the config directory.                 |
-| `steps`       | `string \| string[]`      | `**/*.steps.ts`    | Step-module glob(s). Importing them is what registers your steps.       |
-| `world`       | `string`                  | `BasicWorld`       | Module that default-exports a world factory `() => world`.              |
-| `concurrency` | `number`                  | `1` (serial)       | Max scenarios in flight at once. See [Concurrency](#concurrency).       |
-| `reporter`    | `"pretty" \| "progress"`  | `pretty`           | Output style. See [Reporters & output](#reporters--output).             |
-| `verbose`     | `boolean`                 | `false`            | Report every scenario, not just failures.                               |
-| `name`        | `string`                  | —                  | Only scenarios whose name matches (substring, or `/regex/flags`).       |
-| `tags`        | `string`                  | —                  | Cucumber tag expression, e.g. `@smoke and not @wip`.                    |
+| Field         | Type                     | Default         | Meaning                                                           |
+| ------------- | ------------------------ | --------------- | ----------------------------------------------------------------- |
+| `features`    | `string \| string[]`     | `**/*.feature`  | Feature-file glob(s), relative to the config directory.           |
+| `steps`       | `string \| string[]`     | `**/*.steps.ts` | Step-module glob(s). Importing them is what registers your steps. |
+| `world`       | `string`                 | `BasicWorld`    | Module that default-exports a world factory `() => world`.        |
+| `concurrency` | `number`                 | `1` (serial)    | Max scenarios in flight at once. See [Concurrency](#concurrency). |
+| `reporter`    | `"pretty" \| "progress"` | `pretty`        | Output style. See [Reporters & output](#reporters--output).       |
+| `verbose`     | `boolean`                | `false`         | Report every scenario, not just failures.                         |
+| `name`        | `string`                 | —               | Only scenarios whose name matches (substring, or `/regex/flags`). |
+| `tags`        | `string`                 | —               | Cucumber tag expression, e.g. `@smoke and not @wip`.              |
 
 The config file is loaded by Bun, so it may be TypeScript and import the
 `RunnerOptions` type for editor help.
@@ -116,18 +116,18 @@ step-forge [options] [feature globs...]
 Positional arguments are feature globs and **override** the configured
 `features`, so you can run a subset ad hoc.
 
-| Flag                    | Short | Description                                             |
-| ----------------------- | ----- | ------------------------------------------------------- |
-| `--tags <expr>`         | `-t`  | Tag expression, e.g. `"@smoke and not @wip"`.           |
-| `--name <pattern>`      | `-n`  | Only scenarios whose name matches (substring/`/regex/`).|
-| `--steps <glob>`        | `-s`  | Step-module glob (repeatable).                          |
-| `--world <module>`      | `-w`  | World factory module.                                   |
-| `--concurrency <n>`     | `-c`  | Max scenarios in flight (default `1`).                  |
-| `--reporter <name>`     | `-r`  | `pretty` (default) or `progress`.                       |
-| `--verbose`             | `-v`  | Report every scenario, not just failures.               |
-| `--interactive`         | `-i`  | Interactive watch mode (see below). Requires a TTY.     |
-| `--config <path>`       |       | Directory to resolve the config file and globs from.    |
-| `--help`                | `-h`  | Show usage.                                             |
+| Flag                | Short | Description                                              |
+| ------------------- | ----- | -------------------------------------------------------- |
+| `--tags <expr>`     | `-t`  | Tag expression, e.g. `"@smoke and not @wip"`.            |
+| `--name <pattern>`  | `-n`  | Only scenarios whose name matches (substring/`/regex/`). |
+| `--steps <glob>`    | `-s`  | Step-module glob (repeatable).                           |
+| `--world <module>`  | `-w`  | World factory module.                                    |
+| `--concurrency <n>` | `-c`  | Max scenarios in flight (default `1`).                   |
+| `--reporter <name>` | `-r`  | `pretty` (default) or `progress`.                        |
+| `--verbose`         | `-v`  | Report every scenario, not just failures.                |
+| `--interactive`     | `-i`  | Interactive watch mode (see below). Requires a TTY.      |
+| `--config <path>`   |       | Directory to resolve the config file and globs from.     |
+| `--help`            | `-h`  | Show usage.                                              |
 
 Examples:
 
@@ -159,7 +159,7 @@ step-forge -i                 # browse and pick from everything
 step-forge -i -t "@smoke"     # open with the query pre-filled
 ```
 
-The prompt is always live, with one committed selection (the *armed*
+The prompt is always live, with one committed selection (the _armed_
 population):
 
 - **Enter** arms the highlighted choice, runs it immediately, and re-runs it on
@@ -206,11 +206,11 @@ beforeScenario(({ world, scenario }) => {
 });
 ```
 
-| Hook                  | Runs                                             |
-| --------------------- | ------------------------------------------------ |
-| `beforeAll`/`afterAll` | Once around the entire run — `beforeAll` before concurrency starts, `afterAll` after every scenario is done. |
-| `beforeFeature`/`afterFeature` | Around each feature file.               |
-| `beforeScenario`/`afterScenario` | Around each scenario (gets its world).|
+| Hook                             | Runs                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `beforeAll`/`afterAll`           | Once around the entire run — `beforeAll` before concurrency starts, `afterAll` after every scenario is done. |
+| `beforeFeature`/`afterFeature`   | Around each feature file.                                                                                    |
+| `beforeScenario`/`afterScenario` | Around each scenario (gets its world).                                                                       |
 
 Multiple `beforeAll` (and multiple `afterAll`) hooks run **in parallel** with no
 ordering between them — if one setup step must precede another, sequence both

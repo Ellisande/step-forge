@@ -8,10 +8,7 @@ import {
 export const dependencyRule: AnalysisRule = {
   name: "dependency-check",
 
-  check(
-    scenario: ParsedScenario,
-    matchedSteps: MatchedStep[]
-  ): Diagnostic[] {
+  check(scenario: ParsedScenario, matchedSteps: MatchedStep[]): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
     const produced = {
       given: new Set<string>(),
@@ -40,10 +37,9 @@ export const dependencyRule: AnalysisRule = {
       if (Object.keys(missing).length > 0) {
         const lines = Object.entries(missing).map(
           ([phase, keys]) =>
-            `${phase.charAt(0).toUpperCase() + phase.slice(1)}: ${keys.map((k) => `${phase}.${k}`).join(", ")}`
+            `${phase.charAt(0).toUpperCase() + phase.slice(1)}: ${keys.map(k => `${phase}.${k}`).join(", ")}`
         );
-        const message =
-          "Missing required dependencies:\n" + lines.join("\n");
+        const message = "Missing required dependencies:\n" + lines.join("\n");
 
         diagnostics.push({
           file: scenario.file,

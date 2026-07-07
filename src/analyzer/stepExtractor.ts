@@ -221,17 +221,16 @@ function collectCallChain(call: ts.CallExpression): ts.CallExpression[] {
   const chain: ts.CallExpression[] = [call];
   let current: ts.Expression = call.expression;
 
-  while (true) {
-    // Walk through PropertyAccessExpression to find the next call
+  // Walk through PropertyAccessExpression to find the next call
+  if (ts.isPropertyAccessExpression(current)) {
+    current = current.expression;
+  }
+
+  while (ts.isCallExpression(current)) {
+    chain.push(current);
+    current = current.expression;
     if (ts.isPropertyAccessExpression(current)) {
       current = current.expression;
-    }
-
-    if (ts.isCallExpression(current)) {
-      chain.push(current);
-      current = current.expression;
-    } else {
-      break;
     }
   }
 
@@ -274,7 +273,7 @@ function extractExpression(statementCall: ts.CallExpression): string | null {
 function extractExpressionFromArrowFunction(
   fn: ts.ArrowFunction
 ): string | null {
-  const params = fn.parameters.map((p) => p.name.getText());
+  const params = fn.parameters.map(p => p.name.getText());
 
   // The body should be a template expression or string literal
   let body = fn.body;
@@ -307,7 +306,10 @@ function reconstructExpressionFromTemplate(
   let result = template.head.text;
 
   for (const span of template.templateSpans) {
-    if (ts.isIdentifier(span.expression) && paramNames.includes(span.expression.text)) {
+    if (
+      ts.isIdentifier(span.expression) &&
+      paramNames.includes(span.expression.text)
+    ) {
       result += "{string}";
     } else {
       // Non-parameter expression, use {string} as fallback
@@ -332,8 +334,7 @@ function extractDependencies(
   if (!arg || !ts.isObjectLiteralExpression(arg)) return deps;
 
   for (const prop of arg.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name))
-      continue;
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
 
     const phase = prop.name.text as "given" | "when" | "then";
     if (!deps[phase]) continue;
@@ -413,7 +414,7 @@ function extractKeysFromExpression(
         (p): p is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
           ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)
       )
-      .map((p) => p.name.getText())
+      .map(p => p.name.getText())
       .filter(Boolean);
   }
 
@@ -428,8 +429,8 @@ function extractKeysFromExpression(
     const type = ctx.checker.getTypeAtLocation(expr);
     return type
       .getProperties()
-      .map((p) => p.name)
-      .filter((n) => n !== "merge");
+      .map(p => p.name)
+      .filter(n => n !== "merge");
   } catch {
     return [];
   }

@@ -21,7 +21,7 @@ Use `bun run test`, **not** `bun test` — the latter is Bun's own test runner a
 
 ## Architecture
 
-Step Forge is a TypeScript library for writing **type-safe Gherkin step definitions** using a builder pattern, with a **native Bun runtime** (`src/runtime/cli.ts`, the `step-forge` bin) that executes features directly — no Vitest, no Cucumber.js. It does use two standalone Cucumber *libraries*: `@cucumber/gherkin` (+ `@cucumber/messages`) to parse `.feature` files, and `@cucumber/cucumber-expressions` to match step text — but nothing from `@cucumber/cucumber` itself. See `RUNTIME.md` for the consumer-facing runner guide.
+Step Forge is a TypeScript library for writing **type-safe Gherkin step definitions** using a builder pattern, with a **native Bun runtime** (`src/runtime/cli.ts`, the `step-forge` bin) that executes features directly — no Vitest, no Cucumber.js. It does use two standalone Cucumber _libraries_: `@cucumber/gherkin` (+ `@cucumber/messages`) to parse `.feature` files, and `@cucumber/cucumber-expressions` to match step text — but nothing from `@cucumber/cucumber` itself. See `RUNTIME.md` for the consumer-facing runner guide.
 
 ### Builder Chain
 
@@ -32,7 +32,7 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 ```
 
 - **Statement**: A string or function. Functions define variables via parameters: `(name: string) => \`a user named ${name}\`` — each parameter becomes a placeholder in the step expression (`{string}` by default, or the placeholder of the matching parser).
-- **Parsers**: Optional, one per variable. A `Parser<T>` is a cucumber-expression *parameter type*: `{ name, regexp, parse }`. `name` drives the placeholder (`{name}`), `regexp` is how the value is recognised in step text, and `parse` transforms the match into `T`. The engine registers each parser into the expression's `ParameterTypeRegistry`, so matching and coercion happen in one pass (`parse` runs during matching, not after). This lets a parser introduce a novel placeholder like `{color}` that genuinely constrains matching. Built-in-named parsers (`{int}`/`{float}`/`{string}`) defer to cucumber's own built-in types. Default is `stringParser` for every variable.
+- **Parsers**: Optional, one per variable. A `Parser<T>` is a cucumber-expression _parameter type_: `{ name, regexp, parse }`. `name` drives the placeholder (`{name}`), `regexp` is how the value is recognised in step text, and `parse` transforms the match into `T`. The engine registers each parser into the expression's `ParameterTypeRegistry`, so matching and coercion happen in one pass (`parse` runs during matching, not after). This lets a parser introduce a novel placeholder like `{color}` that genuinely constrains matching. Built-in-named parsers (`{int}`/`{float}`/`{string}`) defer to cucumber's own built-in types. Default is `stringParser` for every variable.
 - **Dependencies**: Declare which keys from other phases' state this step needs. Keys are marked `"required"` or `"optional"`. Required deps are validated at runtime; optional ones may be `undefined`.
 - **Step function**: Receives `{ variables, given, when, then }` — only the phases allowed by the builder type are accessible (given steps can't access when/then state).
 - **`.step(fn)` registers.** Calling `.step()` is the terminal action: it adds the step to the runtime registry (`globalRegistry`) and returns the step metadata (`{ statement, expression, dependencies, stepType, stepFunction }`). There is no `.register()` — calling `.step()` on a partial chain both builds and registers, so building a step purely to inspect its `.expression` also registers it.
@@ -70,7 +70,7 @@ Feature tests run under **Bun** via the native runner (`bun src/runtime/cli.ts`,
 
 Type-safety tests use `@ts-expect-error` annotations validated at `tsc` compile time (`npm run build` runs `tsc --noEmit`), not at runtime.
 
-`step-forge.config.ts` runs three feature files through the native runner: `features/basic.feature` (steps in `features/steps/commonSteps.ts`), `features/tags.feature`, and `features/analyzer/analyzer.feature`, the analyzer's own self-tests (steps in `features/steps/analyzerSteps.ts`, which drive the `analyze()` API and flow diagnostics through world state like any other scenario). `features` is a list of **exact** files so the analyzer's `fixtures/*.feature` — which are *inputs* to `analyze()`, not tests — are never discovered as scenarios.
+`step-forge.config.ts` runs three feature files through the native runner: `features/basic.feature` (steps in `features/steps/commonSteps.ts`), `features/tags.feature`, and `features/analyzer/analyzer.feature`, the analyzer's own self-tests (steps in `features/steps/analyzerSteps.ts`, which drive the `analyze()` API and flow diagnostics through world state like any other scenario). `features` is a list of **exact** files so the analyzer's `fixtures/*.feature` — which are _inputs_ to `analyze()`, not tests — are never discovered as scenarios.
 
 The project no longer depends on the `@cucumber/cucumber` runtime at all; every path runs natively under the Bun runner. Remaining un-wired files are demos only:
 
