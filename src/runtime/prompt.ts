@@ -380,10 +380,26 @@ export class Prompt {
   }
   private failPage = 1; // last-rendered pane height, for page scrolling
 
-  /** Move the failures viewport by `deltaLines` (clamped in {@link render}). */
+  /**
+   * Move the failures viewport by `deltaLines` (clamped in {@link render}).
+   * Scrolling repaints via {@link scheduleRender} so a burst of wheel events
+   * (a trackpad fires many per gesture) collapses into a single frame instead of
+   * one full-screen repaint each — which is what made small scrolls stutter.
+   */
   private adjustFailScroll(deltaLines: number): void {
     this.failScroll = Math.max(0, this.failScroll + deltaLines);
-    this.render();
+    this.scheduleRender();
+  }
+
+  private renderQueued = false;
+  /** Coalesce repaints scheduled within the same tick into one frame. */
+  private scheduleRender(): void {
+    if (this.renderQueued) return;
+    this.renderQueued = true;
+    queueMicrotask(() => {
+      this.renderQueued = false;
+      if (this.started) this.render();
+    });
   }
 
   /**
@@ -429,7 +445,9 @@ export class Prompt {
     if (sgr) button = parseInt(sgr[1], 10);
     else if (seq.length === 6) button = seq.charCodeAt(3) - 32; // legacy X10
     if (button === null || (button & 0x40) === 0) return; // wheel events only
-    this.adjustFailScroll((button & 1) === 0 ? -3 : 3); // up : down
+    // One line per notch — a burst of events still scrolls fast, but a small
+    // scroll moves gently. Deltas accumulate and paint once (adjustFailScroll).
+    this.adjustFailScroll((button & 1) === 0 ? -1 : 1); // up : down
   }
 
   private refilter(): void {
