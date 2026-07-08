@@ -187,6 +187,16 @@ function expandScenario(
     }
   }
 
+  // A single-row outline runs exactly once, so present it as a plain scenario:
+  // use the outline's own name and drop the `outline` grouping marker. This
+  // keeps it out of the multi-row logic (no `outline › row` label in reports,
+  // a "scenario" badge in the interactive picker) while still substituting the
+  // one example row's values into the steps.
+  if (results.length === 1) {
+    const { outline: _outline, ...only } = results[0];
+    return [{ ...only, name: scenario.name, line: scenario.location.line }];
+  }
+
   return results;
 }
 

@@ -24,9 +24,11 @@ export interface ParsedScenario {
    */
   tags: string[];
   /**
-   * Present only for rows expanded from a `Scenario Outline`. Carries the base
-   * outline name so the plugin can group its rows under one `describe`, with
-   * each row a separate `test` labelled by its example values.
+   * Present only for rows expanded from a multi-row `Scenario Outline`. Carries
+   * the base outline name so the plugin can group its rows under one `describe`,
+   * with each row a separate `test` labelled by its example values. A single-row
+   * outline is collapsed to a plain scenario (named after the outline) and omits
+   * this marker, since it runs exactly once.
    */
   outline?: { name: string };
 }
