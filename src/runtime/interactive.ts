@@ -3,20 +3,22 @@ import * as path from "node:path";
 import { ParsedScenario } from "../analyzer/types";
 import { ParsedFeature, parseFeatureCatalog } from "../analyzer/gherkinParser";
 import { globFiles } from "../globFiles";
-import { ResolvedConfig } from "./config";
+import { ResolvedConfig, ResolvedProfile } from "./config";
+import { selectScenarios } from "./filter";
 import { Prompt, Suggestion } from "./prompt";
 import { RunEvent } from "./reporters";
 import { watchFeatures, Watcher } from "./watcher";
 
 /**
- * A population the user can pick and run: everything, a whole tag, a whole
- * feature file, a single scenario, or a whole scenario outline (all its example
- * rows). Scenarios and outlines are keyed by name — an outline is one choice that
- * runs every row — so selection is stable across edits that shift line numbers.
- * Resolved against the freshly-parsed features on every run.
+ * A population the user can pick and run: everything, a named profile, a whole
+ * tag, a whole feature file, a single scenario, or a whole scenario outline (all
+ * its example rows). Scenarios and outlines are keyed by name — an outline is one
+ * choice that runs every row — so selection is stable across edits that shift
+ * line numbers. Resolved against the freshly-parsed features on every run.
  */
 type Choice =
   | { kind: "all" }
+  | { kind: "profile"; id: string; tags?: string; name?: string }
   | { kind: "tag"; tag: string }
   | { kind: "feature"; file: string; name: string }
   | { kind: "scenario"; file: string; name: string };
@@ -134,7 +136,9 @@ class InteractiveSession {
     } catch {
       // A half-written feature mid-save may fail to parse; keep the old cache.
     }
-    this.prompt.setSuggestions(buildSuggestions(this.catalog));
+    this.prompt.setSuggestions(
+      buildSuggestions(this.catalog, this.config.profiles)
+    );
   }
 
   // --- run cycle -----------------------------------------------------------
@@ -283,8 +287,14 @@ class InteractiveSession {
 }
 
 // --- choices ---------------------------------------------------------------
-/** Build the typeahead pool: every tag, feature, and scenario in the catalog. */
-function buildSuggestions(catalog: ParsedFeature[]): Suggestion[] {
+/**
+ * Build the typeahead pool: `@all`, every configured profile, then every tag,
+ * feature, and scenario in the catalog.
+ */
+function buildSuggestions(
+  catalog: ParsedFeature[],
+  profiles: ResolvedProfile[]
+): Suggestion[] {
   const suggestions: Suggestion[] = [];
 
   // Synthetic top-of-list entry: run every configured scenario. Named `@all` so
@@ -295,6 +305,23 @@ function buildSuggestions(catalog: ParsedFeature[]): Suggestion[] {
     search: "@all run everything all",
     value: { kind: "all" } satisfies Choice,
   });
+
+  // Configured profiles sit near the top: each is one choice that runs the
+  // profile's tag/name selection (its reporter and other settings apply when the
+  // child runner resolves `--profile <id>`).
+  for (const profile of profiles) {
+    suggestions.push({
+      badge: "profile",
+      label: profile.id,
+      search: `profile ${profile.id} ${profile.tags ?? ""}`.toLowerCase(),
+      value: {
+        kind: "profile",
+        id: profile.id,
+        tags: profile.tags,
+        name: profile.name,
+      } satisfies Choice,
+    });
+  }
 
   const tags = new Set<string>();
   for (const feature of catalog) {
@@ -352,6 +379,14 @@ function resolveScenarios(
   switch (choice.kind) {
     case "all":
       return scenarios;
+    case "profile":
+      // Apply the profile's tag/name selection exactly as the runner will (this
+      // count ignores any profile-specific `features` narrowing; the child run,
+      // launched with `--profile`, is authoritative).
+      return selectScenarios(scenarios, {
+        tags: choice.tags,
+        name: choice.name,
+      });
     case "tag":
       return scenarios.filter(s => s.tags.includes(choice.tag));
     case "feature":
@@ -371,6 +406,8 @@ function choiceLabel(choice: Choice): string {
   switch (choice.kind) {
     case "all":
       return "@all";
+    case "profile":
+      return `profile ${choice.id}`;
     case "tag":
       return choice.tag;
     case "feature":
@@ -386,6 +423,9 @@ function choiceLabel(choice: Choice): string {
  * matches the parent's setup regardless of its own config file; the scope flags
  * narrow to the chosen population:
  *   - all → every configured feature, unfiltered
+ *   - profile → `--profile <id>`, letting the child re-resolve the whole profile
+ *     (its own features/steps/world/concurrency/tags) from the shared config
+ *     file; base flags are *not* forwarded so they can't clobber it
  *   - tag → all configured features, filtered by `-t <tag>`
  *   - feature → that single feature file
  *   - scenario → that feature file, name-anchored with `-n "/^…$/"` (the name is
@@ -394,6 +434,12 @@ function choiceLabel(choice: Choice): string {
  * the results region itself.
  */
 function runArgs(choice: Choice, config: ResolvedConfig): string[] {
+  // A profile is resolved end-to-end by the child from the shared config file,
+  // so hand it only the name (plus `--events`) and let it own every setting.
+  if (choice.kind === "profile") {
+    return ["--profile", choice.id, "--events"];
+  }
+
   const args: string[] = [];
   for (const glob of config.steps) args.push("-s", glob);
   if (config.world) args.push("-w", config.world);

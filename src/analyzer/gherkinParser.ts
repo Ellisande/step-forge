@@ -193,8 +193,16 @@ function expandScenario(
   // a "scenario" badge in the interactive picker) while still substituting the
   // one example row's values into the steps.
   if (results.length === 1) {
-    const { outline: _outline, ...only } = results[0];
-    return [{ ...only, name: scenario.name, line: scenario.location.line }];
+    const [only] = results;
+    return [
+      {
+        name: scenario.name,
+        file: only.file,
+        line: scenario.location.line,
+        steps: only.steps,
+        tags: only.tags,
+      },
+    ];
   }
 
   return results;

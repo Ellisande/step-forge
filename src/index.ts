@@ -65,7 +65,7 @@ export type {
 export type { StateFromDependencies } from "./typeHelpers";
 // Re-exported from the main entry so consumers can type their
 // `step-forge.config.ts` with a plain `@step-forge/step-forge` import.
-export type { RunnerOptions } from "./runtime/config";
+export type { RunnerOptions, Profile } from "./runtime/config";
 
 export const analyzer = {
   analyze,

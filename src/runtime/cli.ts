@@ -18,6 +18,7 @@ Options:
   -w, --world <module>     World factory module (default export () => world)
   -c, --concurrency <n>    Max scenarios in flight (default: 1, i.e. serial)
   -r, --reporter <name>    "pretty" (default) or "progress"
+  -p, --profile <name>     Use a named profile from the config file
   -v, --verbose            Report every scenario, not just failures
   -i, --interactive        Interactive watch mode: pick a tag/feature/scenario
                            and re-run it on every file change
@@ -31,6 +32,7 @@ Positional arguments are feature globs and override the configured features.
 function parseCli(argv: string[]): {
   cwd: string;
   overrides: RunnerOptions;
+  profile?: string;
   interactive: boolean;
   events: boolean;
 } {
@@ -44,6 +46,7 @@ function parseCli(argv: string[]): {
       world: { type: "string", short: "w" },
       concurrency: { type: "string", short: "c" },
       reporter: { type: "string", short: "r" },
+      profile: { type: "string", short: "p" },
       verbose: { type: "boolean", short: "v" },
       interactive: { type: "boolean", short: "i" },
       // Hidden: emit NDJSON run events instead of human output. Used by the
@@ -86,17 +89,18 @@ function parseCli(argv: string[]): {
   return {
     cwd,
     overrides,
+    profile: values.profile,
     interactive: values.interactive ?? false,
     events: values.events ?? false,
   };
 }
 
 async function main(): Promise<void> {
-  const { cwd, overrides, interactive, events } = parseCli(
+  const { cwd, overrides, profile, interactive, events } = parseCli(
     process.argv.slice(2)
   );
   const fileConfig = await loadConfigFile(cwd);
-  const config = resolveConfig(cwd, fileConfig, overrides);
+  const config = resolveConfig(cwd, fileConfig, overrides, profile);
   if (interactive) {
     await runInteractive(config);
     return; // interactive mode manages its own lifecycle and exit code

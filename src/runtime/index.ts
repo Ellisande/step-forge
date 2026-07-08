@@ -9,7 +9,13 @@ export type { ScenarioResult, StepResult, CompiledStep } from "./engine";
 export { StepRegistry, globalRegistry } from "./registry";
 export type { RegisteredStep, StepType } from "./registry";
 
-export type { RunnerOptions, ResolvedConfig } from "./config";
+export type {
+  RunnerOptions,
+  ResolvedConfig,
+  Profile,
+  ResolvedProfile,
+  ReporterName,
+} from "./config";
 
 export {
   HookRegistry,

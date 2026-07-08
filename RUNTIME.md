@@ -93,19 +93,55 @@ npm install --save-dev @step-forge/step-forge
 Config is resolved from three sources, later ones overriding earlier ones:
 **defaults → `step-forge.config.ts` → CLI flags**. Every field is optional.
 
-| Field         | Type                     | Default         | Meaning                                                           |
-| ------------- | ------------------------ | --------------- | ----------------------------------------------------------------- |
-| `features`    | `string \| string[]`     | `**/*.feature`  | Feature-file glob(s), relative to the config directory.           |
-| `steps`       | `string \| string[]`     | `**/*.steps.ts` | Step-module glob(s). Importing them is what registers your steps. |
-| `world`       | `string`                 | `BasicWorld`    | Module that default-exports a world factory `() => world`.        |
-| `concurrency` | `number`                 | `1` (serial)    | Max scenarios in flight at once. See [Concurrency](#concurrency). |
-| `reporter`    | `"pretty" \| "progress"` | `pretty`        | Output style. See [Reporters & output](#reporters--output).       |
-| `verbose`     | `boolean`                | `false`         | Report every scenario, not just failures.                         |
-| `name`        | `string`                 | —               | Only scenarios whose name matches (substring, or `/regex/flags`). |
-| `tags`        | `string`                 | —               | Cucumber tag expression, e.g. `@smoke and not @wip`.              |
+| Field         | Type                      | Default         | Meaning                                                              |
+| ------------- | ------------------------- | --------------- | -------------------------------------------------------------------- |
+| `features`    | `string \| string[]`      | `**/*.feature`  | Feature-file glob(s), relative to the config directory.              |
+| `steps`       | `string \| string[]`      | `**/*.steps.ts` | Step-module glob(s). Importing them is what registers your steps.    |
+| `world`       | `string`                  | `BasicWorld`    | Module that default-exports a world factory `() => world`.           |
+| `concurrency` | `number`                  | `1` (serial)    | Max scenarios in flight at once. See [Concurrency](#concurrency).    |
+| `reporter`    | `"pretty" \| "progress"`  | `pretty`        | Output style. See [Reporters & output](#reporters--output).          |
+| `verbose`     | `boolean`                 | `false`         | Report every scenario, not just failures.                            |
+| `name`        | `string`                  | —               | Only scenarios whose name matches (substring, or `/regex/flags`).    |
+| `tags`        | `string`                  | —               | Cucumber tag expression, e.g. `@smoke and not @wip`.                 |
+| `profiles`    | `Record<string, Profile>` | —               | Named presets, selected with `--profile`. See [Profiles](#profiles). |
 
 The config file is loaded by Bun, so it may be TypeScript and import the
 `RunnerOptions` type for editor help.
+
+### Profiles
+
+A **profile** is a named bundle of options you select with `--profile <name>`
+(or from the interactive picker). A profile supports every base option, and may
+additionally give `tags` as a **list** — run as a logical **OR** — so common
+selections don't need hand-written tag expressions.
+
+```ts
+// step-forge.config.ts
+import type { RunnerOptions } from "@step-forge/step-forge";
+
+const config: RunnerOptions = {
+  features: ["features/**/*.feature"],
+  profiles: {
+    // `["@smoke", "@fast"]` ⇒ scenarios tagged @smoke OR @fast
+    quick: { tags: ["@smoke", "@fast"], reporter: "progress" },
+    // a plain string is a full Cucumber tag expression, as usual
+    ci: { tags: "@ci and not @wip", concurrency: 8 },
+  },
+};
+
+export default config;
+```
+
+```bash
+step-forge --profile quick     # OR of @smoke / @fast, progress reporter
+step-forge -p ci               # @ci and not @wip, 8 in parallel
+```
+
+A profile's values **layer over the base config**, and are themselves overridden
+by any CLI flag you pass alongside `--profile` (so precedence is
+**base config → profile → CLI flags**). A profile only sets what it names; any
+option it omits falls through to the base config. An unknown `--profile` name
+fails loudly, listing the profiles you did define.
 
 ## CLI
 
@@ -124,6 +160,7 @@ Positional arguments are feature globs and **override** the configured
 | `--world <module>`  | `-w`  | World factory module.                                    |
 | `--concurrency <n>` | `-c`  | Max scenarios in flight (default `1`).                   |
 | `--reporter <name>` | `-r`  | `pretty` (default) or `progress`.                        |
+| `--profile <name>`  | `-p`  | Use a named [profile](#profiles) from the config file.   |
 | `--verbose`         | `-v`  | Report every scenario, not just failures.                |
 | `--interactive`     | `-i`  | Interactive watch mode (see below). Requires a TTY.      |
 | `--config <path>`   |       | Directory to resolve the config file and globs from.     |
@@ -147,9 +184,11 @@ fails, so it drops straight into CI.
 your feature/step directories. It is laid out top-to-bottom:
 
 1. **Prompt** — a Claude-Code-style typeahead. Start typing to filter every
-   **tag**, **feature**, and **scenario** in your suite. A **scenario outline**
-   appears as a single entry that runs all of its example rows. A special
-   **`@all`** entry at the top runs every configured scenario at once.
+   **profile**, **tag**, **feature**, and **scenario** in your suite. A
+   **scenario outline** appears as a single entry that runs all of its example
+   rows. A special **`@all`** entry at the top runs every configured scenario at
+   once, and each configured [profile](#profiles) appears as its own entry that
+   runs that profile's selection.
 2. **Selection** — the ranked matches; `↑`/`↓` move the highlight.
 3. **Results** — the current run, ordered so the summary is right under the
    controls: **stats** (live pass/fail/skip tallies + duration) on top, the
