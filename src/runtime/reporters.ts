@@ -1,28 +1,6 @@
 import { relative } from "node:path";
 import { relativeFrame, relativeLocation, userFrames } from "../sourceLocation";
 import { ScenarioResult, StepResult } from "./engine";
-import { hyperlink } from "./hyperlink";
-
-/** Parse an absolute `file:line:column` location into its parts. */
-function parseLocation(
-  location: string
-): { file: string; line: number; column: number } | null {
-  const m = /^(.*):(\d+):(\d+)$/.exec(location);
-  return m ? { file: m[1], line: Number(m[2]), column: Number(m[3]) } : null;
-}
-
-/**
- * Render an absolute `file:line:column` relative to `cwd`, as an OSC 8
- * hyperlink back to the absolute path so it stays ⌘-clickable inside the
- * full-screen TUI (see {@link hyperlink}).
- */
-function linkedLocation(location: string, cwd: string): string {
-  const text = relativeLocation(location, cwd);
-  const parsed = parseLocation(location);
-  return parsed
-    ? hyperlink(text, parsed.file, parsed.line, parsed.column)
-    : text;
-}
 
 /**
  * A reporter observes the run. `onScenarioEnd` fires as each scenario finishes
@@ -134,7 +112,7 @@ function indent(text: string, pad: number): string {
 function renderError(error: Error, cwd: string): string {
   const header = `${error.name}: ${error.message}`;
   const frames = userFrames(error.stack).map(
-    f => `    at ${hyperlink(relativeFrame(f, cwd), f.file, f.line, f.column)}`
+    f => `    at ${relativeFrame(f, cwd)}`
   );
   return frames.length ? `${header}\n${frames.join("\n")}` : header;
 }
@@ -149,12 +127,11 @@ function failureDetail(
   result: ScenarioResult,
   cwd: string
 ): string {
-  const featureLoc = `${relative(cwd, result.scenario.file)}:${stepResult.step.line}`;
   const lines = [
-    `feature: ${hyperlink(featureLoc, result.scenario.file, stepResult.step.line)}`,
+    `feature: ${relative(cwd, result.scenario.file)}:${stepResult.step.line}`,
   ];
   if (stepResult.source) {
-    lines.push(`defined: ${linkedLocation(stepResult.source, cwd)}`);
+    lines.push(`defined: ${relativeLocation(stepResult.source, cwd)}`);
   }
   if (stepResult.error) lines.push(renderError(stepResult.error, cwd));
   return indent(c.red(lines.join("\n")), 6);
@@ -176,9 +153,9 @@ function renderScenario(
     `${scenarioMark(result)} ${c.bold(scenarioLabel(result))}`,
   ];
 
-  const rel = relative(cwd, result.scenario.file);
-  const locText = result.scenario.line ? `${rel}:${result.scenario.line}` : rel;
-  const loc = hyperlink(locText, result.scenario.file, result.scenario.line);
+  const loc = result.scenario.line
+    ? `${relative(cwd, result.scenario.file)}:${result.scenario.line}`
+    : relative(cwd, result.scenario.file);
   lines.push(indent(c.dim(loc), 4));
   lines.push("");
 
@@ -187,7 +164,7 @@ function renderScenario(
     const status = sr?.status ?? "skipped";
     const comment =
       opts.stepSource && sr?.source
-        ? c.dim(`  # ${linkedLocation(sr.source, cwd)}`)
+        ? c.dim(`  # ${relativeLocation(sr.source, cwd)}`)
         : "";
     lines.push(
       `  ${STATUS_MARK[status]} ${c.dim(step.effectiveKeyword)} ${step.text}${comment}`

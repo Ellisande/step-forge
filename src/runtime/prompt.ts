@@ -640,59 +640,31 @@ function divider(label: string, cols: number): string {
   return color.dim(head + "─".repeat(fill));
 }
 
-/**
- * Zero-width escapes we pass through untouched when measuring/clipping:
- * SGR color runs (`ESC [ … m`) and OSC 8 hyperlink markers (`ESC ] 8 ; … ST`,
- * where ST is BEL or `ESC \`). The visible link *text* sits between an open and
- * close marker and is measured/clipped normally.
- */
-// eslint-disable-next-line no-control-regex
-const SGR = /^\x1b\[[0-9;]*m/;
-// eslint-disable-next-line no-control-regex
-const OSC8 = /^\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/;
-/** An OSC 8 marker with an empty URI closes an open hyperlink. */
-// eslint-disable-next-line no-control-regex
-const OSC8_CLOSE = /^\x1b\]8;;(?:\x07|\x1b\\)/;
-
-/** Visible width, ignoring the ANSI escapes our color/link helpers may inject. */
-export function stringWidth(s: string): number {
-  return (
-    s
-      // Global, un-anchored twins of SGR/OSC8 (which are `^`-anchored for `clip`).
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\[[0-9;]*m/g, "").length
-  );
+/** Visible width, ignoring the ANSI escapes our color helpers may inject. */
+function stringWidth(s: string): number {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
 
 /**
- * Truncate `s` to `max` visible columns, preserving ANSI color escapes and OSC
- * 8 hyperlink markers (both zero-width). At the cut it re-resets color and, if a
- * hyperlink is still open, emits its close marker so a clipped link can't bleed
- * into the rest of the pane.
+ * Truncate `s` to `max` visible columns, preserving ANSI color escapes (which
+ * have zero width) and re-resetting at the cut so a clipped color can't bleed.
  */
-export function clip(s: string, max: number): string {
+function clip(s: string, max: number): string {
   let width = 0;
   let out = "";
-  let linkOpen = false;
+  // eslint-disable-next-line no-control-regex
+  const escape = /^\x1b\[[0-9;]*m/;
   let i = 0;
   while (i < s.length) {
     const rest = s.slice(i);
-    const link = OSC8.exec(rest);
-    if (link) {
-      out += link[0];
-      i += link[0].length;
-      linkOpen = !OSC8_CLOSE.test(link[0]);
-      continue;
-    }
-    const m = SGR.exec(rest);
+    const m = escape.exec(rest);
     if (m) {
       out += m[0];
       i += m[0].length;
       continue;
     }
-    if (width >= max) return `${out}${linkOpen ? "\x1b]8;;\x07" : ""}\x1b[0m`;
+    if (width >= max) return `${out}\x1b[0m`;
     out += s[i];
     width++;
     i++;
