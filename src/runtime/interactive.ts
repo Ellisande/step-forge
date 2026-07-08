@@ -9,13 +9,14 @@ import { RunEvent } from "./reporters";
 import { watchFeatures, Watcher } from "./watcher";
 
 /**
- * A population the user can pick and run: a whole tag, a whole feature file, a
- * single scenario, or a whole scenario outline (all its example rows). Scenarios
- * and outlines are keyed by name — an outline is one choice that runs every row —
- * so selection is stable across edits that shift line numbers. Resolved against
- * the freshly-parsed features on every run.
+ * A population the user can pick and run: everything, a whole tag, a whole
+ * feature file, a single scenario, or a whole scenario outline (all its example
+ * rows). Scenarios and outlines are keyed by name — an outline is one choice that
+ * runs every row — so selection is stable across edits that shift line numbers.
+ * Resolved against the freshly-parsed features on every run.
  */
 type Choice =
+  | { kind: "all" }
   | { kind: "tag"; tag: string }
   | { kind: "feature"; file: string; name: string }
   | { kind: "scenario"; file: string; name: string };
@@ -286,6 +287,15 @@ class InteractiveSession {
 function buildSuggestions(catalog: ParsedFeature[]): Suggestion[] {
   const suggestions: Suggestion[] = [];
 
+  // Synthetic top-of-list entry: run every configured scenario. Named `@all` so
+  // it reads like a tag, but it is its own choice kind (not a real Gherkin tag).
+  suggestions.push({
+    badge: "all",
+    label: "@all",
+    search: "@all run everything all",
+    value: { kind: "all" } satisfies Choice,
+  });
+
   const tags = new Set<string>();
   for (const feature of catalog) {
     for (const scenario of feature.scenarios) {
@@ -340,6 +350,8 @@ function resolveScenarios(
   scenarios: ParsedScenario[]
 ): ParsedScenario[] {
   switch (choice.kind) {
+    case "all":
+      return scenarios;
     case "tag":
       return scenarios.filter(s => s.tags.includes(choice.tag));
     case "feature":
@@ -357,6 +369,8 @@ function resolveScenarios(
 
 function choiceLabel(choice: Choice): string {
   switch (choice.kind) {
+    case "all":
+      return "@all";
     case "tag":
       return choice.tag;
     case "feature":
@@ -371,6 +385,7 @@ function choiceLabel(choice: Choice): string {
  * base flags forward the resolved config (steps/world/concurrency) so the child
  * matches the parent's setup regardless of its own config file; the scope flags
  * narrow to the chosen population:
+ *   - all → every configured feature, unfiltered
  *   - tag → all configured features, filtered by `-t <tag>`
  *   - feature → that single feature file
  *   - scenario → that feature file, name-anchored with `-n "/^…$/"` (the name is
@@ -385,6 +400,9 @@ function runArgs(choice: Choice, config: ResolvedConfig): string[] {
   args.push("-c", String(config.concurrency));
 
   switch (choice.kind) {
+    case "all":
+      args.push(...config.features);
+      break;
     case "tag":
       args.push(...config.features, "-t", choice.tag);
       break;

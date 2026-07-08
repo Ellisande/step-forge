@@ -148,7 +148,8 @@ your feature/step directories. It is laid out top-to-bottom:
 
 1. **Prompt** — a Claude-Code-style typeahead. Start typing to filter every
    **tag**, **feature**, and **scenario** in your suite. A **scenario outline**
-   appears as a single entry that runs all of its example rows.
+   appears as a single entry that runs all of its example rows. A special
+   **`@all`** entry at the top runs every configured scenario at once.
 2. **Selection** — the ranked matches; `↑`/`↓` move the highlight.
 3. **Results** — the current run, ordered so the summary is right under the
    controls: **stats** (live pass/fail/skip tallies + duration) on top, the
