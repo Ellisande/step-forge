@@ -185,6 +185,13 @@ The child streams its results back as an event stream, which the dashboard
 renders in place. Recursive watching works on macOS, Windows, and modern Linux
 (Node ≥ 20 / Bun).
 
+The `feature:` / `defined:` locations in a failure block are emitted as OSC 8
+terminal hyperlinks, so they stay ⌘-clickable inside the full-screen dashboard
+(and in normal output). In a VS Code-family terminal they open the file at the
+exact line; elsewhere they fall back to a plain `file://` link. Override the
+target with `STEP_FORGE_EDITOR=vscode|cursor|windsurf|file`; `NO_COLOR` disables
+the links along with colour.
+
 ## Hooks
 
 Hooks are side-effect callbacks for setup/teardown (start a server, reset a
