@@ -1,12 +1,42 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import _ from "lodash";
-
 import { DepMap, FullDependencies, StepType } from "./builderTypeUtils";
 import { Parser, stringParser } from "./parsers";
 import { globalRegistry } from "./runtime/registry";
 import { captureDefinitionSite } from "./sourceLocation";
-import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
 import { MergeableWorld } from "./world";
+
+/**
+ * Read a step's declared dependencies for one phase out of the world, validating
+ * that every `"required"` key is present. Mirrors the old `_.pick` + `requireFrom*`
+ * pair, but the key lists are computed once at registration (see `addStep`), so
+ * per-execution work is a couple of straight loops with no lodash or
+ * `Object.entries`/`filter`/`map` churn. Phases with no declared dependencies
+ * skip the world getter entirely (which would otherwise clone the whole phase
+ * state) and return a fresh empty object.
+ */
+function narrowPhase(
+  world: MergeableWorld<any, any, any>,
+  phase: StepType,
+  allKeys: string[],
+  requiredKeys: string[]
+): Record<string, unknown> {
+  if (allKeys.length === 0) return {};
+  const state = world[phase] as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of allKeys) {
+    if (key in state) out[key] = state[key];
+  }
+  for (const key of requiredKeys) {
+    if (!out[key]) {
+      throw new Error(`Key ${key} is required in ${phase} state`);
+    }
+  }
+  return out;
+}
+
+/** The `"required"` keys of a dependency map. */
+const requiredKeysOf = (deps: DepMap): string[] =>
+  Object.keys(deps).filter(key => deps[key] === "required");
 
 /**
  * The runtime core of the builder chain. `addStep` is deliberately phase-agnostic:
@@ -44,6 +74,16 @@ export const addStep =
     const parsers =
       declaredParsers ?? Array.from({ length: argCount }, () => stringParser);
     const expression = statement(...parsers.map(parser => `{${parser.name}}`));
+    // Dependency key lists are fixed once the step is registered, so compute
+    // them here (once) rather than on every execution. `*AllKeys` is every
+    // declared dependency (required + optional), `*RequiredKeys` the subset that
+    // must be present at run time.
+    const givenAllKeys = Object.keys(givenDependencies);
+    const whenAllKeys = Object.keys(whenDependencies);
+    const thenAllKeys = Object.keys(thenDependencies);
+    const givenRequiredKeys = requiredKeysOf(givenDependencies);
+    const whenRequiredKeys = requiredKeysOf(whenDependencies);
+    const thenRequiredKeys = requiredKeysOf(thenDependencies);
     // The fully-wired step body, decoupled from any test runner: takes an
     // explicit world plus the values captured from a Gherkin step, validates +
     // narrows dependencies, runs the user's step, and merges the result. The
@@ -54,27 +94,11 @@ export const addStep =
       world: MergeableWorld<any, any, any>,
       capturedArgs: unknown[]
     ) => {
-      const requiredKeys = (deps: DepMap) =>
-        Object.entries(deps)
-          .filter(([, value]) => value === "required")
-          .map(([key]) => key);
-      const narrowedGiven = {
-        ..._.pick(world.given, Object.keys(givenDependencies)),
-        ...requireFromGiven(requiredKeys(givenDependencies), world),
-      };
-      const narrowedWhen = {
-        ..._.pick(world.when, Object.keys(whenDependencies)),
-        ...requireFromWhen(requiredKeys(whenDependencies), world),
-      };
-      const narrowedThen = {
-        ..._.pick(world.then, Object.keys(thenDependencies)),
-        ...requireFromThen(requiredKeys(thenDependencies), world),
-      };
       const result = await stepFunction({
         variables: capturedArgs,
-        given: narrowedGiven,
-        when: narrowedWhen,
-        then: narrowedThen,
+        given: narrowPhase(world, "given", givenAllKeys, givenRequiredKeys),
+        when: narrowPhase(world, "when", whenAllKeys, whenRequiredKeys),
+        then: narrowPhase(world, "then", thenAllKeys, thenRequiredKeys),
       } as StepFnInput);
       world[stepType].merge({
         ...(result as any),

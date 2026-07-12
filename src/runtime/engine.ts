@@ -74,6 +74,30 @@ export function compileRegistry(registry: StepRegistry): CompiledStep[] {
 }
 
 /**
+ * Bucket a compiled step table by step type so matching only scans candidates
+ * of the right keyword (a `Then` step never compares against `given`/`when`
+ * definitions). Built once per compiled array and memoized against it — the
+ * array's identity is stable for a whole run (one `compileRegistry` call), so
+ * every scenario reuses the same buckets rather than re-filtering by type on
+ * each of its steps.
+ */
+const bucketCache = new WeakMap<
+  CompiledStep[],
+  Record<StepType, CompiledStep[]>
+>();
+function bucketsByType(
+  compiled: CompiledStep[]
+): Record<StepType, CompiledStep[]> {
+  let buckets = bucketCache.get(compiled);
+  if (!buckets) {
+    buckets = { given: [], when: [], then: [] };
+    for (const c of compiled) buckets[c.step.stepType].push(c);
+    bucketCache.set(compiled, buckets);
+  }
+  return buckets;
+}
+
+/**
  * Find the single step definition matching a Gherkin step. Matching is
  * opinionated and strict: the keyword must line up with the step type, exactly
  * one definition must match, and undefined/ambiguous both throw rather than
@@ -84,10 +108,10 @@ function matchStep(
   compiled: CompiledStep[]
 ): { step: RegisteredStep; args: unknown[] } {
   const expectedType = keywordToStepType[step.effectiveKeyword];
+  const candidates = bucketsByType(compiled)[expectedType];
   const matches: { step: RegisteredStep; args: unknown[] }[] = [];
 
-  for (const { step: def, expression } of compiled) {
-    if (def.stepType !== expectedType) continue;
+  for (const { step: def, expression } of candidates) {
     const result = expression.match(step.text);
     if (result) {
       // The parsers are registered as the expression's parameter types, so the
