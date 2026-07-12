@@ -28,6 +28,15 @@ import type {
   ParsedStep,
   MatchedStep,
 } from "./analyzer/index";
+import { createBuilders } from "./init";
+import {
+  beforeScenario,
+  afterScenario,
+  beforeFeature,
+  afterFeature,
+  beforeAll,
+  afterAll,
+} from "./hooks";
 
 export {
   givenBuilder,
@@ -38,9 +47,25 @@ export {
   intParser,
   numberParser,
   booleanParser,
+  createBuilders,
+  beforeScenario,
+  afterScenario,
+  beforeFeature,
+  afterFeature,
+  beforeAll,
+  afterAll,
 };
 
 export type { Parser };
+export type {
+  ScenarioInfo,
+  PlainHookFn,
+  ScenarioHookFn,
+} from "./runtime/hooks";
+export type { StateFromDependencies } from "./typeHelpers";
+// Re-exported from the main entry so consumers can type their
+// `step-forge.config.ts` with a plain `@step-forge/step-forge` import.
+export type { RunnerOptions, Profile } from "./runtime/config";
 
 export const analyzer = {
   analyze,

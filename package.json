@@ -1,6 +1,6 @@
 {
   "name": "@step-forge/step-forge",
-  "version": "0.0.16",
+  "version": "0.0.26",
   "module": "./dist/step-forge.js",
   "type": "module",
   "exports": {
@@ -18,25 +18,38 @@
       "types": "./dist/analyzer.d.ts",
       "import": "./dist/analyzer.js"
     },
+    "./runtime": {
+      "require": {
+        "types": "./dist/runtime.d.cts",
+        "default": "./dist/runtime.cjs"
+      },
+      "import": {
+        "types": "./dist/runtime.d.ts",
+        "default": "./dist/runtime.js"
+      }
+    },
     "./dist/": {
       "import": "./dist/"
     }
   },
   "bin": {
+    "step-forge": "./dist/cli.js",
     "step-forge-analyze": "./dist/analyzer-cli.js"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "types": "./dist/step-forge.d.ts",
   "scripts": {
-    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md LICENSE.md CHANGELOG.md build/",
-    "test:cucumber": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p default",
-    "test:ci": "NODE_ENV=test NODE_OPTIONS='--import tsx' cucumber-js -p ci",
-    "test": "NODE_ENV=test PORT=7888 LOG_LEVEL=none NODE_OPTIONS='--import tsx' cucumber-js -p all 2> /dev/null",
-    "test:debug": "NODE_ENV=test PORT=7888 NODE_OPTIONS='--import tsx' cucumber-js -p all",
+    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md RUNTIME.md LICENSE.md CHANGELOG.md build/",
+    "test": "bun run test:unit && bun run test:features",
+    "test:unit": "bun test src",
+    "test:features": "bun src/runtime/cli.ts",
+    "test:ci": "bun run test",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"
   },
   "devDependencies": {
-    "@cucumber/pretty-formatter": "^1.0.1",
     "@types/jsdom": "^21.1.7",
     "@types/lodash": "^4.17.13",
     "@types/node": "^22.10.2",
@@ -48,7 +61,6 @@
     "eslint-plugin-prettier": "^5.2.1",
     "prettier": "^3.3.3",
     "tsdown": "^0.22.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.2"
   },
   "peerDependencies": {
@@ -60,7 +72,6 @@
     }
   },
   "dependencies": {
-    "@cucumber/cucumber": "^12.6.0",
     "@cucumber/cucumber-expressions": "^18.1.0",
     "@cucumber/gherkin": "^37.0.1",
     "@cucumber/messages": "^24.1.0",

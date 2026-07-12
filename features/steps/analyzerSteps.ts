@@ -1,67 +1,102 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Given, When, Then } from "@cucumber/cucumber";
 import { expect } from "earl";
-import { analyze, Diagnostic } from "../../src/analyzer/index";
+import { givenBuilder } from "../../src/given";
+import { whenBuilder } from "../../src/when";
+import { thenBuilder } from "../../src/then";
+import { intParser, stringParser } from "../../src/parsers";
+import { analyze } from "../../src/analyzer/index";
+import {
+  AnalyzerGivenState,
+  AnalyzerWhenState,
+  AnalyzerThenState,
+} from "./analyzerWorld";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.resolve(__dirname, "../analyzer/fixtures");
 
-let fixtureStepFile: string;
-let fixtureFeatureFile: string;
-let diagnostics: Diagnostic[];
+// --- Given: point at the fixture files to analyze --- //
 
-Given("step definitions from {string}", function (fileName: string) {
-  fixtureStepFile = path.join(fixturesDir, fileName);
-});
+givenBuilder<AnalyzerGivenState>()
+  .statement((fileName: string) => `step definitions from ${fileName}`)
+  .step(({ variables: [fileName] }) => ({
+    stepFile: path.join(fixturesDir, fileName),
+  }));
 
-Given("a feature file {string}", function (fileName: string) {
-  fixtureFeatureFile = path.join(fixturesDir, fileName);
-});
+givenBuilder<AnalyzerGivenState>()
+  .statement((fileName: string) => `a feature file ${fileName}`)
+  .step(({ variables: [fileName] }) => ({
+    featureFile: path.join(fixturesDir, fileName),
+  }));
 
-When("I analyze the files", async function () {
-  diagnostics = await analyze({
-    stepFiles: [fixtureStepFile],
-    featureFiles: [fixtureFeatureFile],
+// --- When: run the analyzer over the recorded fixtures --- //
+
+whenBuilder<AnalyzerGivenState, AnalyzerWhenState>()
+  .statement("I analyze the files")
+  .dependencies({ given: { stepFile: "required", featureFile: "required" } })
+  .step(async ({ given: { stepFile, featureFile } }) => ({
+    diagnostics: await analyze({
+      stepFiles: [stepFile],
+      featureFiles: [featureFile],
+    }),
+  }));
+
+// --- Then: assert over the produced diagnostics --- //
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .statement("there should be no errors")
+  .dependencies({ when: { diagnostics: "required" } })
+  .step(({ when: { diagnostics } }) => {
+    const errors = diagnostics.filter(d => d.severity === "error");
+    expect(errors).toHaveLength(0);
   });
-});
 
-Then("there should be no errors", function () {
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  expect(errors).toHaveLength(0);
-});
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .statement((count: number) => `there should be ${count} error/errors`)
+  .parsers([intParser])
+  .dependencies({ when: { diagnostics: "required" } })
+  .step(({ variables: [count], when: { diagnostics } }) => {
+    const errors = diagnostics.filter(d => d.severity === "error");
+    expect(errors).toHaveLength(count);
+  });
 
-Then("there should be {int} error/errors", function (count: number) {
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  expect(errors).toHaveLength(count);
-});
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .statement((substring: string) => `an error should mention ${substring}`)
+  .dependencies({ when: { diagnostics: "required" } })
+  .step(({ variables: [substring], when: { diagnostics } }) => {
+    const errors = diagnostics.filter(d => d.severity === "error");
+    const found = errors.some(e => e.message.includes(substring));
+    expect(found).toEqual(true);
+  });
 
-Then("an error should mention {string}", function (substring: string) {
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  const found = errors.some((e) => e.message.includes(substring));
-  expect(found).toEqual(true);
-});
-
-Then(
-  "there is/are {int} error/errors for rule {string}",
-  function (count: number, rule: string) {
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .statement(
+    (count: number, rule: string) =>
+      `there is/are ${count} error/errors for rule ${rule}`
+  )
+  .parsers([intParser, stringParser])
+  .dependencies({ when: { diagnostics: "required" } })
+  .step(({ variables: [count, rule], when: { diagnostics } }) => {
     const errors = diagnostics.filter(
-      (d) => d.severity === "error" && d.rule === rule
+      d => d.severity === "error" && d.rule === rule
     );
     expect(errors).toHaveLength(count);
-  }
-);
+  });
 
-Then(
-  "the error on line {int} should span columns {int} to {int}",
-  function (line: number, startCol: number, endCol: number) {
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .statement(
+    (line: number, startCol: number, endCol: number) =>
+      `the error on line ${line} should span columns ${startCol} to ${endCol}`
+  )
+  .parsers([intParser, intParser, intParser])
+  .dependencies({ when: { diagnostics: "required" } })
+  .step(({ variables: [line, startCol, endCol], when: { diagnostics } }) => {
     const errors = diagnostics.filter(
-      (d) => d.severity === "error" && d.range.startLine === line
+      d => d.severity === "error" && d.range.startLine === line
     );
     expect(errors.length).toBeGreaterThanOrEqual(1);
     const error = errors[0];
     expect(error.range.startColumn).toEqual(startCol);
     expect(error.range.endColumn).toEqual(endCol);
     expect(error.range.endLine).toEqual(line);
-  }
-);
+  });

@@ -9,10 +9,66 @@ const BUILDER_NAMES: Record<string, StepType> = {
   thenBuilder: "then",
 };
 
+/**
+ * Threaded through the AST walk. `checker` is `null` on the parse-only fast
+ * path; a step that genuinely needs type information sets `needsChecker`, which
+ * triggers a one-time retry with a real type-checked `Program`.
+ */
+interface ExtractCtx {
+  checker: ts.TypeChecker | null;
+  needsChecker: boolean;
+}
+
 export function extractStepDefinitions(
   filePaths: string[],
   tsConfigPath?: string
 ): StepDefinitionMeta[] {
+  // Fast path: parse each file with `createSourceFile` (tokenize + parse only,
+  // no type resolution — ~1ms/file) and walk the AST. Building a full
+  // type-checked `Program` loads `lib.*.d.ts` and resolves every import (~150ms)
+  // and is only needed for two uncommon shapes: a `.step()` whose return isn't a
+  // plain object literal, or the re-exported-builder pattern. Those set
+  // `needsChecker`, and we retry once with a real Program below.
+  const sources = filePaths
+    .map(parseSourceFile)
+    .filter((s): s is ts.SourceFile => s !== null);
+  const fast = extractWithSources(sources, null);
+  if (!fast.needsChecker) return fast.results;
+
+  // Slow path: some step needs type information. Build the program once and
+  // re-extract from *its* source files — the checker only understands nodes it
+  // bound itself, so the parse-only ASTs above can't be reused here.
+  const program = ts.createProgram(
+    filePaths,
+    resolveCompilerOptions(tsConfigPath)
+  );
+  const checker = program.getTypeChecker();
+  const checkedSources = filePaths
+    .map(fp => program.getSourceFile(fp))
+    .filter((s): s is ts.SourceFile => s !== undefined);
+  return extractWithSources(checkedSources, checker).results;
+}
+
+/** Parse a single file into an AST with no type resolution. */
+function parseSourceFile(filePath: string): ts.SourceFile | null {
+  const text = ts.sys.readFile(filePath);
+  if (text === undefined) return null;
+  const scriptKind = filePath.endsWith(".tsx")
+    ? ts.ScriptKind.TSX
+    : ts.ScriptKind.TS;
+  // setParentNodes: true — the extractor relies on `.getText()`/`.getStart()`,
+  // which walk parent pointers up to the SourceFile.
+  return ts.createSourceFile(
+    filePath,
+    text,
+    ts.ScriptTarget.ESNext,
+    true,
+    scriptKind
+  );
+}
+
+/** Resolve compiler options from tsconfig (fallback to sane defaults). */
+function resolveCompilerOptions(tsConfigPath?: string): ts.CompilerOptions {
   const configPath =
     tsConfigPath ?? ts.findConfigFile(process.cwd(), ts.sys.fileExists);
   let compilerOptions: ts.CompilerOptions = {
@@ -37,35 +93,36 @@ export function extractStepDefinitions(
 
   // Ensure noEmit so we don't write files
   compilerOptions.noEmit = true;
+  return compilerOptions;
+}
 
-  const program = ts.createProgram(filePaths, compilerOptions);
-  const checker = program.getTypeChecker();
+function extractWithSources(
+  sources: ts.SourceFile[],
+  checker: ts.TypeChecker | null
+): { results: StepDefinitionMeta[]; needsChecker: boolean } {
+  const ctx: ExtractCtx = { checker, needsChecker: false };
   const results: StepDefinitionMeta[] = [];
-
-  for (const filePath of filePaths) {
-    const sourceFile = program.getSourceFile(filePath);
-    if (!sourceFile) continue;
-    const fileResults = extractFromSourceFile(sourceFile, checker);
-    results.push(...fileResults);
+  for (const sourceFile of sources) {
+    results.push(...extractFromSourceFile(sourceFile, ctx));
   }
-
-  return results;
+  return { results, needsChecker: ctx.needsChecker };
 }
 
 function extractFromSourceFile(
   sourceFile: ts.SourceFile,
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): StepDefinitionMeta[] {
   const results: StepDefinitionMeta[] = [];
 
   function visit(node: ts.Node) {
-    // Look for .register() call expressions
+    // The chain now terminates at `.step(...)`, which is the registration
+    // point (there is no `.register()` anymore).
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "register"
+      node.expression.name.text === "step"
     ) {
-      const meta = extractFromRegisterCall(node, sourceFile, checker);
+      const meta = extractFromRegisterCall(node, sourceFile, ctx);
       if (meta) {
         results.push(meta);
       }
@@ -80,7 +137,7 @@ function extractFromSourceFile(
 function extractFromRegisterCall(
   registerCall: ts.CallExpression,
   sourceFile: ts.SourceFile,
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): StepDefinitionMeta | null {
   // Walk backwards through the method chain to find all parts
   // Pattern: builder().statement(...).dependencies?(...).step(...).register()
@@ -107,7 +164,7 @@ function extractFromRegisterCall(
     }
 
     if (name === "step") {
-      produces = extractProducedKeys(link, checker);
+      produces = extractProducedKeys(link, ctx);
       continue;
     }
 
@@ -133,7 +190,7 @@ function extractFromRegisterCall(
   // const Given = givenBuilder<T>().statement;
   // Given("foo").step(...).register()
   if (!stepType || !expression) {
-    const reExport = resolveReExportedCall(chain, checker);
+    const reExport = resolveReExportedCall(chain, ctx);
     if (reExport) {
       if (!stepType) stepType = reExport.stepType;
       if (!expression) expression = reExport.expression;
@@ -164,17 +221,16 @@ function collectCallChain(call: ts.CallExpression): ts.CallExpression[] {
   const chain: ts.CallExpression[] = [call];
   let current: ts.Expression = call.expression;
 
-  while (true) {
-    // Walk through PropertyAccessExpression to find the next call
+  // Walk through PropertyAccessExpression to find the next call
+  if (ts.isPropertyAccessExpression(current)) {
+    current = current.expression;
+  }
+
+  while (ts.isCallExpression(current)) {
+    chain.push(current);
+    current = current.expression;
     if (ts.isPropertyAccessExpression(current)) {
       current = current.expression;
-    }
-
-    if (ts.isCallExpression(current)) {
-      chain.push(current);
-      current = current.expression;
-    } else {
-      break;
     }
   }
 
@@ -217,7 +273,7 @@ function extractExpression(statementCall: ts.CallExpression): string | null {
 function extractExpressionFromArrowFunction(
   fn: ts.ArrowFunction
 ): string | null {
-  const params = fn.parameters.map((p) => p.name.getText());
+  const params = fn.parameters.map(p => p.name.getText());
 
   // The body should be a template expression or string literal
   let body = fn.body;
@@ -250,7 +306,10 @@ function reconstructExpressionFromTemplate(
   let result = template.head.text;
 
   for (const span of template.templateSpans) {
-    if (ts.isIdentifier(span.expression) && paramNames.includes(span.expression.text)) {
+    if (
+      ts.isIdentifier(span.expression) &&
+      paramNames.includes(span.expression.text)
+    ) {
       result += "{string}";
     } else {
       // Non-parameter expression, use {string} as fallback
@@ -275,8 +334,7 @@ function extractDependencies(
   if (!arg || !ts.isObjectLiteralExpression(arg)) return deps;
 
   for (const prop of arg.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name))
-      continue;
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
 
     const phase = prop.name.text as "given" | "when" | "then";
     if (!deps[phase]) continue;
@@ -302,14 +360,14 @@ function extractDependencies(
 
 function extractProducedKeys(
   stepCall: ts.CallExpression,
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): string[] {
   const callback = stepCall.arguments[0];
   if (!callback) return [];
 
   // Try to get the return type of the callback by analyzing its body
   if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) {
-    return extractProducedKeysFromCallback(callback, checker);
+    return extractProducedKeysFromCallback(callback, ctx);
   }
 
   return [];
@@ -317,20 +375,20 @@ function extractProducedKeys(
 
 function extractProducedKeysFromCallback(
   callback: ts.ArrowFunction | ts.FunctionExpression,
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): string[] {
   const body = callback.body;
 
   // Concise arrow: () => ({ key: value })
   if (!ts.isBlock(body)) {
-    return extractKeysFromExpression(body, checker);
+    return extractKeysFromExpression(body, ctx);
   }
 
   // Block body: look at return statements
   const keys = new Set<string>();
   function visitReturn(node: ts.Node) {
     if (ts.isReturnStatement(node) && node.expression) {
-      for (const key of extractKeysFromExpression(node.expression, checker)) {
+      for (const key of extractKeysFromExpression(node.expression, ctx)) {
         keys.add(key);
       }
     }
@@ -342,7 +400,7 @@ function extractProducedKeysFromCallback(
 
 function extractKeysFromExpression(
   expr: ts.Expression,
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): string[] {
   // Unwrap parenthesized expressions
   while (ts.isParenthesizedExpression(expr)) {
@@ -356,17 +414,23 @@ function extractKeysFromExpression(
         (p): p is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
           ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)
       )
-      .map((p) => p.name.getText())
+      .map(p => p.name.getText())
       .filter(Boolean);
   }
 
-  // Try type checker as fallback
+  // Non-literal return (a variable, a spread-only object, a function call): the
+  // keys can only come from the type checker. On the parse-only pass we have
+  // none — flag it so the caller retries with a real Program.
+  if (!ctx.checker) {
+    ctx.needsChecker = true;
+    return [];
+  }
   try {
-    const type = checker.getTypeAtLocation(expr);
+    const type = ctx.checker.getTypeAtLocation(expr);
     return type
       .getProperties()
-      .map((p) => p.name)
-      .filter((n) => n !== "merge");
+      .map(p => p.name)
+      .filter(n => n !== "merge");
   } catch {
     return [];
   }
@@ -379,7 +443,7 @@ interface ReExportResult {
 
 function resolveReExportedCall(
   chain: ts.CallExpression[],
-  checker: ts.TypeChecker
+  ctx: ExtractCtx
 ): ReExportResult | null {
   // Look for the pattern: Variable("...")... where Variable was assigned from builderType().statement
   // The last call in the chain (furthest from register) should be the variable call
@@ -402,7 +466,14 @@ function resolveReExportedCall(
 
   if (!identifier) return null;
 
-  const symbol = checker.getSymbolAtLocation(identifier);
+  // Tracing the re-exported builder's declaration needs symbol resolution,
+  // which only a real Program provides. Flag for the checked retry.
+  if (!ctx.checker) {
+    ctx.needsChecker = true;
+    return null;
+  }
+
+  const symbol = ctx.checker.getSymbolAtLocation(identifier);
   if (!symbol) return null;
 
   const decl = symbol.valueDeclaration;

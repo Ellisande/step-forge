@@ -1,26 +1,33 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  EmptyDependencies,
+  FullDependencies,
   GetFunctionArgs,
   isString,
   RequiredOrOptional,
+  Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
 import { Parser } from "./parsers";
 
+const THEN: StepType = "then";
+
+// The object a then step receives: all three phases are reachable (each narrowed
+// to declared dependencies, or `never` when none). Then steps may also return
+// nothing (assertion-only), hence the `void` in the output type.
+type ThenInput<Variables, Given, When, Then> = {
+  variables: Variables;
+  given: Given;
+  when: When;
+  then: Then;
+};
+type ThenOutput<ThenState> =
+  Partial<ThenState> | Promise<Partial<ThenState>> | void | Promise<void>;
+
 const thenDependencies =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables,
-    GivenState,
-    WhenState,
-    ThenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
+  <Variables, GivenState, WhenState, ThenState>(
+    statement: (...args: any[]) => string,
     parsers?: Parser<any>[]
   ) =>
   <
@@ -31,148 +38,71 @@ const thenDependencies =
     given?: GivenDeps;
     when?: WhenDeps;
     then?: ThenDeps;
-  }) => {
-    type RestrictedGivenState = {
-      [K in keyof GivenState as K extends keyof GivenDeps
-        ? K
-        : never]: GivenDeps[K] extends "optional"
-        ? GivenState[K] | undefined
-        : GivenState[K];
-    };
-    type RestrictedWhenState = {
-      [K in keyof WhenState as K extends keyof WhenDeps
-        ? K
-        : never]: WhenDeps[K] extends "optional"
-        ? WhenState[K] | undefined
-        : WhenState[K];
-    };
-    type RestrictedThenState = {
-      [K in keyof ThenState as K extends keyof ThenDeps
-        ? K
-        : never]: ThenDeps[K] extends "optional"
-        ? ThenState[K] | undefined
-        : ThenState[K];
-    };
-    type Dependencies = {
-      given: GivenDeps;
-      when: WhenDeps;
-      then: ThenDeps;
-    };
-    const fullDependencies: Dependencies = {
-      given: dependencies.given ?? ({} as GivenDeps),
-      when: dependencies.when ?? ({} as WhenDeps),
-      then: dependencies.then ?? ({} as ThenDeps),
-    };
-    return {
-      step: addStep<
-        ResolvedStepType,
-        Statement,
-        Dependencies,
+  }) => ({
+    step: addStep<
+      ThenInput<
         Variables,
-        GivenState,
-        WhenState,
-        ThenState,
-        RestrictedGivenState,
-        RestrictedWhenState,
-        RestrictedThenState
-      >(statement, stepType, fullDependencies, parsers),
-    };
-  };
+        Restrict<GivenState, GivenDeps>,
+        Restrict<WhenState, WhenDeps>,
+        Restrict<ThenState, ThenDeps>
+      >,
+      ThenOutput<ThenState>
+    >(
+      statement,
+      THEN,
+      {
+        given: dependencies.given ?? {},
+        when: dependencies.when ?? {},
+        then: dependencies.then ?? {},
+      } as FullDependencies,
+      parsers
+    ),
+  });
 
 const thenParsers =
-  <
-    Statement extends (...args: any[]) => string,
-    ResolvedStepType extends StepType,
-    Variables extends any[],
-    GivenState,
-    WhenState,
-    ThenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType
+  <Variables extends any[], GivenState, WhenState, ThenState>(
+    statement: (...args: any[]) => string
   ) =>
   <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
     parsers: Parsers
+  ) => ({
+    dependencies: thenDependencies<Variables, GivenState, WhenState, ThenState>(
+      statement,
+      parsers as unknown as Parser<any>[]
+    ),
+    step: addStep<
+      ThenInput<Variables, never, never, never>,
+      ThenOutput<ThenState>
+    >(statement, THEN, undefined, parsers as unknown as Parser<any>[]),
+  });
+
+const thenStatement =
+  <GivenState, WhenState, ThenState>() =>
+  <Statement extends ((...args: [...any]) => string) | string>(
+    statement: Statement
   ) => {
+    const normalizedStatement: (...args: any[]) => string = isString(statement)
+      ? () => statement
+      : (statement as (...args: any[]) => string);
+
+    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
     return {
       dependencies: thenDependencies<
-        Statement,
-        ResolvedStepType,
         Variables,
         GivenState,
         WhenState,
         ThenState
-      >(statement, stepType, parsers as unknown as Parser<any>[]),
+      >(normalizedStatement),
+      parsers: thenParsers<Variables, GivenState, WhenState, ThenState>(
+        normalizedStatement
+      ),
       step: addStep<
-        ResolvedStepType,
-        Statement,
-        EmptyDependencies,
-        Variables,
-        GivenState,
-        WhenState,
-        ThenState,
-        never,
-        never,
-        never
-      >(statement, stepType, undefined, parsers as unknown as Parser<any>[]),
+        ThenInput<Variables, never, never, never>,
+        ThenOutput<ThenState>
+      >(normalizedStatement, THEN),
     };
   };
 
-const thenStatement =
-  <ResolvedStepType extends StepType, GivenState, WhenState, ThenState>(
-    stepType: ResolvedStepType
-  ) =>
-  <Statement extends ((...args: [...any]) => string) | string>(
-    statement: Statement
-  ) => {
-    let normalizedStatement: Statement extends string
-      ? () => string
-      : Statement;
-    if (isString(statement)) {
-      normalizedStatement = (() => statement) as any;
-    } else {
-      normalizedStatement = statement as any;
-    }
-    type NormalizedStatement = typeof normalizedStatement;
-
-    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
-    const dependencyFunc = thenDependencies<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState,
-      WhenState,
-      ThenState
-    >(normalizedStatement, stepType);
-    const parsersFunc = thenParsers<
-      NormalizedStatement,
-      ResolvedStepType,
-      Variables,
-      GivenState,
-      WhenState,
-      ThenState
-    >(normalizedStatement, stepType);
-    const stepFunc = addStep<
-      ResolvedStepType,
-      NormalizedStatement,
-      EmptyDependencies,
-      Variables,
-      GivenState,
-      WhenState,
-      ThenState,
-      never,
-      never,
-      never
-    >(normalizedStatement, stepType);
-    return {
-      dependencies: dependencyFunc,
-      parsers: parsersFunc,
-      step: stepFunc,
-    };
-  };
-
-export const thenBuilder = <GivenState, WhenState, ThenState>() => {
-  return {
-    statement: thenStatement<"then", GivenState, WhenState, ThenState>("then"),
-  };
-};
+export const thenBuilder = <GivenState, WhenState, ThenState>() => ({
+  statement: thenStatement<GivenState, WhenState, ThenState>(),
+});

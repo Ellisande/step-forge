@@ -4,6 +4,8 @@ Step Forge is a typed wrapper around the Cucumber library. It provides an opinio
 
 This is just a primer, see the [official documentation site](https://step-forge.com) for more information.
 
+To run your `.feature` files against these steps, see the **[Runtime guide](./RUNTIME.md)** — configuration, the `step-forge` CLI, hooks, filtering, and concurrency.
+
 ## Installation
 
 ```bash
@@ -16,7 +18,6 @@ npm install @step-forge/step-forge
 
 ```ts
 // features/steps/world.ts
-import { setWorldConstructor } from "@cucumber/cucumber";
 import { BasicWorld } from "@step-forge/step-forge";
 
 export interface GivenState {
@@ -29,7 +30,9 @@ export interface WhenState {
 
 export interface ThenState {}
 
-setWorldConstructor(BasicWorld<GivenState, WhenState, ThenState>);
+// The native runtime creates one fresh world per scenario. With the Vitest
+// plugin, point `world` at a module that default-exports this factory.
+export default () => new BasicWorld<GivenState, WhenState, ThenState>();
 ```
 
 ### Defining Steps

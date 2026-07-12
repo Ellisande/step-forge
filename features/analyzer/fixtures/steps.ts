@@ -16,18 +16,15 @@ type ThenState = Record<string, never>;
 
 givenBuilder<GivenState>()
   .statement("I started")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 whenBuilder<GivenState, WhenState>()
   .statement("I got here")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("everything was good")
-  .step(() => {})
-  .register();
+  .step(() => {});
 
 // --- Steps that produce state --- //
 
@@ -37,8 +34,7 @@ givenBuilder<GivenState>()
     return {
       user: { type: "person", token: "abc" },
     };
-  })
-  .register();
+  });
 
 givenBuilder<GivenState>()
   .statement((name: string) => `a user named ${name}`)
@@ -46,8 +42,7 @@ givenBuilder<GivenState>()
     return {
       user: { type: "person", token: name },
     };
-  })
-  .register();
+  });
 
 givenBuilder<GivenState>()
   .statement("an account")
@@ -55,20 +50,17 @@ givenBuilder<GivenState>()
     return {
       account: { id: "acct-1" },
     };
-  })
-  .register();
+  });
 
 // --- Ambiguous steps (same expression, two definitions) --- //
 
 givenBuilder<GivenState>()
   .statement("the system is ready")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 givenBuilder<GivenState>()
   .statement("the system is ready")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 // --- When steps with dependencies --- //
 
@@ -79,8 +71,7 @@ whenBuilder<GivenState, WhenState>()
     return {
       user: { ...user, saved: true },
     };
-  })
-  .register();
+  });
 
 whenBuilder<GivenState, WhenState>()
   .statement("I delete the account")
@@ -89,25 +80,21 @@ whenBuilder<GivenState, WhenState>()
     return {
       result: { success: true },
     };
-  })
-  .register();
+  });
 
 // --- Then steps with dependencies --- //
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("there is a user")
   .dependencies({ when: { user: "required" } })
-  .step(() => {})
-  .register();
+  .step(() => {});
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((name: string) => `the user's name is ${name}`)
   .dependencies({ when: { user: "required" } })
-  .step(() => {})
-  .register();
+  .step(() => {});
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("the account might exist")
   .dependencies({ given: { account: "optional" } })
-  .step(() => {})
-  .register();
+  .step(() => {});

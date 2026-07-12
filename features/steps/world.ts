@@ -1,11 +1,11 @@
-import { setWorldConstructor } from "@cucumber/cucumber";
-import { BasicWorld } from "../../src/world";
+export type Color = "red" | "green" | "blue";
 
 export interface GivenState {
   user: {
     type: string;
     token: string;
   };
+  favoriteColor: Color;
 }
 
 export interface WhenState {
@@ -25,5 +25,3 @@ export interface WhenState {
 }
 
 export interface ThenState {}
-
-setWorldConstructor(BasicWorld<GivenState, WhenState, ThenState>);

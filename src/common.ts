@@ -1,65 +1,75 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  Given as CucGiven,
-  Then as CucThen,
-  When as CucWhen,
-} from "@cucumber/cucumber";
-import _ from "lodash";
-
-import { StepType } from "./builderTypeUtils";
+import { DepMap, FullDependencies, StepType } from "./builderTypeUtils";
 import { Parser, stringParser } from "./parsers";
-import { requireFromGiven, requireFromThen, requireFromWhen } from "./utils";
+import { globalRegistry } from "./runtime/registry";
+import { captureDefinitionSite } from "./sourceLocation";
 import { MergeableWorld } from "./world";
 
-const cucFunctionMap = {
-  given: CucGiven,
-  when: CucWhen,
-  then: CucThen,
-};
+/**
+ * Read a step's declared dependencies for one phase out of the world, validating
+ * that every `"required"` key is present. Mirrors the old `_.pick` + `requireFrom*`
+ * pair, but the key lists are computed once at registration (see `addStep`), so
+ * per-execution work is a couple of straight loops with no lodash or
+ * `Object.entries`/`filter`/`map` churn. Phases with no declared dependencies
+ * skip the state read entirely and return a fresh empty object.
+ *
+ * The `out` object handed to the step is always freshly built here, so mutating
+ * it can never reach world state — the only mutation path is a step's return
+ * value flowing through `merge`/`mergeInto`. That guarantee is why we can read
+ * from the world's *live* state (`readState`, no clone) instead of the cloning
+ * getter: the live object never escapes this function. Custom worlds without
+ * the fast-path fall back to the `given`/`when`/`then` getter.
+ */
+function narrowPhase(
+  world: MergeableWorld<any, any, any>,
+  phase: StepType,
+  allKeys: string[],
+  requiredKeys: string[]
+): Record<string, unknown> {
+  if (allKeys.length === 0) return {};
+  const state = world.readState
+    ? world.readState(phase)
+    : (world[phase] as unknown as Record<string, unknown>);
+  const out: Record<string, unknown> = {};
+  for (const key of allKeys) {
+    if (key in state) out[key] = state[key];
+  }
+  for (const key of requiredKeys) {
+    if (!out[key]) {
+      throw new Error(`Key ${key} is required in ${phase} state`);
+    }
+  }
+  return out;
+}
 
+/** The `"required"` keys of a dependency map. */
+const requiredKeysOf = (deps: DepMap): string[] =>
+  Object.keys(deps).filter(key => deps[key] === "required");
+
+/**
+ * The runtime core of the builder chain. `addStep` is deliberately phase-agnostic:
+ * the calling builder (given/when/then) has already computed the exact type of the
+ * step function via its two type parameters:
+ *
+ * - `StepFnInput`  — the `{ variables, given, when, then }` object the step receives,
+ *   with each phase already narrowed to its declared dependencies.
+ * - `StepFnOutput` — the phase-appropriate return type (`Partial<State>`, or `void`).
+ *
+ * Everything else is plain runtime data (a statement function, the step type, the
+ * dependency map, the parsers), so `addStep` carries no generics for them.
+ */
 export const addStep =
-  <
-    ResolvedStepType extends StepType,
-    Statement extends (...args: any[]) => string,
-    Dependencies extends {
-      given: any;
-      when: any;
-      then: any;
-    },
-    Variables,
-    GivenState,
-    WhenState,
-    ThenState,
-    RestrictedGivenState,
-    RestrictedWhenState,
-    RestrictedThenState,
-  >(
-    statement: Statement,
-    stepType: ResolvedStepType,
-    dependencies: Dependencies = {
+  <StepFnInput, StepFnOutput>(
+    statement: (...args: any[]) => string,
+    stepType: StepType,
+    dependencies: FullDependencies = {
       given: {},
       when: {},
       then: {},
-    } as Dependencies,
+    },
     declaredParsers?: Parser<any>[]
   ) =>
-  (
-    stepFunction: (input: {
-      variables: Variables;
-      given: RestrictedGivenState;
-      when: RestrictedWhenState;
-      then: RestrictedThenState;
-    }) => ResolvedStepType extends "given"
-      ? Partial<GivenState> | Promise<Partial<GivenState>>
-      : ResolvedStepType extends "when"
-        ? Partial<WhenState> | Promise<Partial<WhenState>>
-        :
-            | Partial<ThenState>
-            | Promise<Partial<ThenState>>
-            | void
-            | Promise<void>
-  ) => {
-    const statementFunction = statement;
+  (stepFunction: (input: StepFnInput) => StepFnOutput) => {
     const {
       given: givenDependencies,
       when: whenDependencies,
@@ -68,84 +78,55 @@ export const addStep =
     // Resolve the parsers up front, defaulting every variable to `stringParser`
     // (the `{string}` placeholder, value passed through unchanged) when none are
     // provided. Numeric/boolean values are opt-in via explicit parsers.
-    const argCount = statementFunction.length;
+    const argCount = statement.length;
     const parsers =
       declaredParsers ?? Array.from({ length: argCount }, () => stringParser);
-    const expression = statementFunction(
-      ...parsers.map(parser => parser.gherkin)
-    );
+    const expression = statement(...parsers.map(parser => `{${parser.name}}`));
+    // Dependency key lists are fixed once the step is registered, so compute
+    // them here (once) rather than on every execution. `*AllKeys` is every
+    // declared dependency (required + optional), `*RequiredKeys` the subset that
+    // must be present at run time.
+    const givenAllKeys = Object.keys(givenDependencies);
+    const whenAllKeys = Object.keys(whenDependencies);
+    const thenAllKeys = Object.keys(thenDependencies);
+    const givenRequiredKeys = requiredKeysOf(givenDependencies);
+    const whenRequiredKeys = requiredKeysOf(whenDependencies);
+    const thenRequiredKeys = requiredKeysOf(thenDependencies);
+    // The fully-wired step body, decoupled from any test runner: takes an
+    // explicit world plus the values captured from a Gherkin step, validates +
+    // narrows dependencies, runs the user's step, and merges the result. The
+    // captured values arrive already coerced — each parser is registered as the
+    // cucumber-expression parameter type, so `parse` runs during matching, not
+    // here.
+    const execute = async (
+      world: MergeableWorld<any, any, any>,
+      capturedArgs: unknown[]
+    ) => {
+      const result = await stepFunction({
+        variables: capturedArgs,
+        given: narrowPhase(world, "given", givenAllKeys, givenRequiredKeys),
+        when: narrowPhase(world, "when", whenAllKeys, whenRequiredKeys),
+        then: narrowPhase(world, "then", thenAllKeys, thenRequiredKeys),
+      } as StepFnInput);
+      const produced = { ...(result as any) };
+      // Fast-path merge when the world exposes it (BasicWorld); otherwise go
+      // through the getter's `merge` so custom worlds still work.
+      if (world.mergeInto) world.mergeInto(stepType, produced);
+      else world[stepType].merge(produced);
+    };
+
+    // Registration is the terminal action of the builder chain: calling
+    // `.step(fn)` makes the step matchable and executable by the runtime. We
+    // capture *this* call site (the user's `.step(...)` line) so reporters can
+    // show where a failing step is defined, Cucumber-style.
+    const source = captureDefinitionSite();
+    globalRegistry.add({ stepType, expression, parsers, execute, source });
+
     return {
       statement,
       expression,
       dependencies,
       stepType,
       stepFunction,
-      register: () => {
-        const cucStepFunction = Object.defineProperty(
-          async function (
-            this: MergeableWorld<GivenState, WhenState, ThenState>,
-            ...args: string[]
-          ) {
-            // Iterate over parsers (not args) so Cucumber's trailing
-            // arguments don't get parsed as if they were captured variables.
-            const coercedArgs = parsers.map((parser, index) =>
-              parser.parse(args[index])
-            );
-            const requiredGivenKeys = Object.entries(givenDependencies ?? {})
-              .filter(([, value]) => value === "required")
-              .map(([key]) => key);
-            const ensuredGivenValues = requireFromGiven(
-              requiredGivenKeys as (keyof GivenState)[],
-              this
-            );
-            const narrowedGiven = {
-              ..._.pick(this.given, Object.keys(givenDependencies ?? {})),
-              ...ensuredGivenValues,
-            };
-            const requiredWhenKeys = Object.entries(whenDependencies ?? {})
-              .filter(([, value]) => value === "required")
-              .map(([key]) => key);
-            const ensuredWhenValues = requireFromWhen(
-              requiredWhenKeys as (keyof WhenState)[],
-              this
-            );
-            const narrowedWhen = {
-              ..._.pick(this.when, Object.keys(whenDependencies ?? {})),
-              ...ensuredWhenValues,
-            };
-            const requiredThenKeys = Object.entries(thenDependencies ?? {})
-              .filter(([, value]) => value === "required")
-              .map(([key]) => key);
-            const ensuredThenValues = requireFromThen(
-              requiredThenKeys as (keyof ThenState)[],
-              this
-            );
-            const narrowedThen = {
-              ..._.pick(this.then, Object.keys(thenDependencies ?? {})),
-              ...ensuredThenValues,
-            };
-            const result = await stepFunction({
-              variables: coercedArgs as Variables,
-              given: narrowedGiven as RestrictedGivenState,
-              when: narrowedWhen as RestrictedWhenState,
-              then: narrowedThen as RestrictedThenState,
-            });
-            this[stepType].merge({
-              ...(result as any),
-            });
-          },
-          "length",
-          { value: argCount, configurable: true }
-        );
-        const cucStep = cucFunctionMap[stepType];
-        cucStep(expression, cucStepFunction);
-        return {
-          stepType,
-          expression,
-          dependencies,
-          statement: statementFunction,
-          stepFunction,
-        };
-      },
     };
   };

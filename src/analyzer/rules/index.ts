@@ -19,5 +19,5 @@ export function runRules(
   scenario: ParsedScenario,
   matchedSteps: MatchedStep[]
 ): Diagnostic[] {
-  return rules.flatMap((rule) => rule.check(scenario, matchedSteps));
+  return rules.flatMap(rule => rule.check(scenario, matchedSteps));
 }

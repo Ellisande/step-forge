@@ -1,25 +1,63 @@
 import { givenBuilder } from "../../src/given";
 import { whenBuilder } from "../../src/when";
 import { thenBuilder } from "../../src/then";
-import { intParser, stringParser } from "../../src/parsers";
-import { GivenState, ThenState, WhenState } from "./world";
+import { intParser, stringParser, Parser } from "../../src/parsers";
+import {
+  beforeFeature,
+  beforeScenario,
+  afterScenario,
+  beforeAll,
+} from "../../src/hooks";
+import { Color, GivenState, ThenState, WhenState } from "./world";
 import { expect } from "earl";
+
+// A custom parser introducing a brand-new `{color}` placeholder: only
+// `red|green|blue` match, so anything else is an undefined step at match time.
+const colorParser: Parser<Color> = {
+  name: "color",
+  regexp: /red|green|blue/,
+  parse: raw => raw as Color,
+};
+
+// --- Hooks (side-effect only; observed by the scenario below) --- //
+//
+// These module flags are write-once (globalStarted/featureStarted) or monotonic
+// (beforeScenarioRuns), so they're safe to read from any scenario even under
+// concurrent execution. We deliberately do NOT record per-scenario identity
+// (e.g. "the last scenario name") here: a hook seeding mutable state that a step
+// reads back is a cross-scenario data race and violates the framework's
+// contract that scenario state flows only through the isolated world. That
+// hook-plumbing check lives in a runtime unit test instead (hooks.test.ts).
+let globalStarted = false;
+let featureStarted = false;
+let beforeScenarioRuns = 0;
+// Global runs once per worker, in this same realm, so a module flag is visible
+// to the step below.
+beforeAll(() => {
+  globalStarted = true;
+});
+beforeFeature(() => {
+  featureStarted = true;
+});
+beforeScenario(() => {
+  beforeScenarioRuns += 1;
+});
+afterScenario(() => {
+  // Purely a smoke test that after-hooks run without a world contract.
+});
 
 // --- No dependency no variable steps --- //
 givenBuilder<GivenState>()
   .statement("I started")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 whenBuilder<GivenState, WhenState>()
   .statement("I got here")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("everything was good")
-  .step(() => ({}))
-  .register();
+  .step(() => ({}));
 
 // --- Dependency only steps --- //
 givenBuilder<GivenState>()
@@ -31,8 +69,7 @@ givenBuilder<GivenState>()
         token: "random",
       },
     };
-  })
-  .register();
+  });
 
 whenBuilder<GivenState, WhenState>()
   .statement("I save the user")
@@ -44,16 +81,14 @@ whenBuilder<GivenState, WhenState>()
         saved: true,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement("there is a user")
   .dependencies({ when: { user: "required" } })
   .step(({ when: { user } }) => {
     expect(user.saved).toBeTruthy();
-  })
-  .register();
+  });
 
 // --- Variable only steps --- //
 givenBuilder<GivenState>()
@@ -65,8 +100,7 @@ givenBuilder<GivenState>()
         token: userName,
       },
     };
-  })
-  .register();
+  });
 
 // --- More complex steps --- //
 
@@ -81,8 +115,7 @@ whenBuilder<GivenState, WhenState>()
         saved: true,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((userName: string) => `the user's name is ${userName}`)
@@ -90,8 +123,7 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ when: { user }, variables: [userName] }) => {
     const token = user.token;
     expect(token).toEqual(userName);
-  })
-  .register();
+  });
 
 // --- Unquoted number variables (parsers) --- //
 
@@ -109,8 +141,7 @@ whenBuilder<GivenState, WhenState>()
         user,
       },
     };
-  })
-  .register();
+  });
 
 thenBuilder<GivenState, WhenState, ThenState>()
   .statement((amount: number) => `the deposit amount is ${amount}`)
@@ -119,5 +150,29 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(({ variables: [amount], when: { deposit } }) => {
     expect(deposit.amount).toEqual(amount);
     expect(typeof deposit.amount).toEqual("number");
-  })
-  .register();
+  });
+
+// --- Custom parser (novel {color} placeholder) --- //
+
+givenBuilder<GivenState>()
+  .statement((color: Color) => `my favorite color is ${color}`)
+  .parsers([colorParser])
+  .step(({ variables: [color] }) => ({ favoriteColor: color }));
+
+thenBuilder<GivenState, WhenState, ThenState>()
+  .statement((color: Color) => `the favorite color is ${color}`)
+  .parsers([colorParser])
+  .dependencies({ given: { favoriteColor: "required" } })
+  .step(({ variables: [color], given: { favoriteColor } }) => {
+    expect(favoriteColor).toEqual(color);
+  });
+
+// --- Hook observation step --- //
+
+thenBuilder<GivenState, WhenState, ThenState>()
+  .statement("the hooks have run")
+  .step(() => {
+    expect(globalStarted).toEqual(true);
+    expect(featureStarted).toEqual(true);
+    expect(beforeScenarioRuns > 0).toEqual(true);
+  });

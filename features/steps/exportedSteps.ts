@@ -8,16 +8,14 @@ const Given = givenBuilder<GivenState>().statement;
 const When = whenBuilder<GivenState, WhenState>().statement;
 const Then = thenBuilder<GivenState, WhenState, ThenState>().statement;
 
-Given("a bank user")
-  .step(() => {
-    return {
-      user: {
-        type: "customer",
-        token: "random",
-      },
-    };
-  })
-  .register();
+Given("a bank user").step(() => {
+  return {
+    user: {
+      type: "customer",
+      token: "random",
+    },
+  };
+});
 
 When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
   .dependencies({ given: { user: "required" } })
@@ -30,13 +28,11 @@ When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
         user,
       },
     };
-  })
-  .register();
+  });
 
 Then((amount: string) => `the balance is ${amount}`)
   .dependencies({ when: { deposit: "required" } })
   .step(({ when: { deposit }, variables: [rawAmount] }) => {
     const amount = parseFloat(rawAmount);
     expect(deposit.amount).toEqual(amount);
-  })
-  .register();
+  });

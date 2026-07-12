@@ -17,10 +17,20 @@ const shared = {
 };
 
 export default defineConfig([
-  // Main entry: ESM + CJS, with bundled type declarations (.d.ts / .d.cts).
+  // Main entry + runtime + CLI: ESM + CJS, with bundled type declarations. These
+  // share one build so the step registry is emitted as a single shared chunk —
+  // the builders (main entry), `runScenario` (runtime), and the `step-forge` CLI
+  // must all see the *same* `globalRegistry` instance, or steps a consumer
+  // registers by importing `@step-forge/step-forge` won't be visible when the
+  // CLI runs them. Splitting the CLI into its own group would bundle a second
+  // registry and silently break registration.
   {
     ...shared,
-    entry: { "step-forge": "./src/index.ts" },
+    entry: {
+      "step-forge": "./src/index.ts",
+      runtime: "./src/runtime/index.ts",
+      cli: "./src/runtime/cli.ts",
+    },
     format: ["esm", "cjs"],
   },
   // Analyzer library + CLI: ESM only. Shared code is split into a chunk.
