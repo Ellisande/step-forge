@@ -17,7 +17,7 @@ Options:
   -s, --steps <glob>       Step-definition module glob (repeatable)
   -w, --world <module>     World factory module (default export () => world)
   -c, --concurrency <n>    Max scenarios in flight (default: 1, i.e. serial)
-  -r, --reporter <name>    "pretty" (default) or "progress"
+  -r, --reporter <name>    "pretty" (default), "progress", or "quiet"
   -p, --profile <name>     Use a named profile from the config file
   -v, --verbose            Report every scenario, not just failures
   -i, --interactive        Interactive watch mode: pick a tag/feature/scenario
@@ -70,7 +70,11 @@ function parseCli(argv: string[]): {
   if (values.world) overrides.world = values.world;
   if (values.verbose) overrides.verbose = true;
   if (values.reporter) {
-    if (values.reporter !== "pretty" && values.reporter !== "progress") {
+    if (
+      values.reporter !== "pretty" &&
+      values.reporter !== "progress" &&
+      values.reporter !== "quiet"
+    ) {
       throw new Error(`Unknown reporter: ${values.reporter}`);
     }
     overrides.reporter = values.reporter;

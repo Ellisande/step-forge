@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { access } from "node:fs/promises";
 
 /** Built-in reporter names. */
-export type ReporterName = "pretty" | "progress";
+export type ReporterName = "pretty" | "progress" | "quiet";
 
 /**
  * Options shared by the base config and every profile. Everything is optional;

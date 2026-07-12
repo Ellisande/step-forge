@@ -93,17 +93,17 @@ npm install --save-dev @step-forge/step-forge
 Config is resolved from three sources, later ones overriding earlier ones:
 **defaults → `step-forge.config.ts` → CLI flags**. Every field is optional.
 
-| Field         | Type                      | Default         | Meaning                                                              |
-| ------------- | ------------------------- | --------------- | -------------------------------------------------------------------- |
-| `features`    | `string \| string[]`      | `**/*.feature`  | Feature-file glob(s), relative to the config directory.              |
-| `steps`       | `string \| string[]`      | `**/*.steps.ts` | Step-module glob(s). Importing them is what registers your steps.    |
-| `world`       | `string`                  | `BasicWorld`    | Module that default-exports a world factory `() => world`.           |
-| `concurrency` | `number`                  | `1` (serial)    | Max scenarios in flight at once. See [Concurrency](#concurrency).    |
-| `reporter`    | `"pretty" \| "progress"`  | `pretty`        | Output style. See [Reporters & output](#reporters--output).          |
-| `verbose`     | `boolean`                 | `false`         | Report every scenario, not just failures.                            |
-| `name`        | `string`                  | —               | Only scenarios whose name matches (substring, or `/regex/flags`).    |
-| `tags`        | `string`                  | —               | Cucumber tag expression, e.g. `@smoke and not @wip`.                 |
-| `profiles`    | `Record<string, Profile>` | —               | Named presets, selected with `--profile`. See [Profiles](#profiles). |
+| Field         | Type                                | Default         | Meaning                                                              |
+| ------------- | ----------------------------------- | --------------- | -------------------------------------------------------------------- |
+| `features`    | `string \| string[]`                | `**/*.feature`  | Feature-file glob(s), relative to the config directory.              |
+| `steps`       | `string \| string[]`                | `**/*.steps.ts` | Step-module glob(s). Importing them is what registers your steps.    |
+| `world`       | `string`                            | `BasicWorld`    | Module that default-exports a world factory `() => world`.           |
+| `concurrency` | `number`                            | `1` (serial)    | Max scenarios in flight at once. See [Concurrency](#concurrency).    |
+| `reporter`    | `"pretty" \| "progress" \| "quiet"` | `pretty`        | Output style. See [Reporters & output](#reporters--output).          |
+| `verbose`     | `boolean`                           | `false`         | Report every scenario, not just failures.                            |
+| `name`        | `string`                            | —               | Only scenarios whose name matches (substring, or `/regex/flags`).    |
+| `tags`        | `string`                            | —               | Cucumber tag expression, e.g. `@smoke and not @wip`.                 |
+| `profiles`    | `Record<string, Profile>`           | —               | Named presets, selected with `--profile`. See [Profiles](#profiles). |
 
 The config file is loaded by Bun, so it may be TypeScript and import the
 `RunnerOptions` type for editor help.
@@ -159,7 +159,7 @@ Positional arguments are feature globs and **override** the configured
 | `--steps <glob>`    | `-s`  | Step-module glob (repeatable).                           |
 | `--world <module>`  | `-w`  | World factory module.                                    |
 | `--concurrency <n>` | `-c`  | Max scenarios in flight (default `1`).                   |
-| `--reporter <name>` | `-r`  | `pretty` (default) or `progress`.                        |
+| `--reporter <name>` | `-r`  | `pretty` (default), `progress`, or `quiet`.              |
 | `--profile <name>`  | `-p`  | Use a named [profile](#profiles) from the config file.   |
 | `--verbose`         | `-v`  | Report every scenario, not just failures.                |
 | `--interactive`     | `-i`  | Interactive watch mode (see below). Requires a TTY.      |
@@ -315,12 +315,15 @@ Each failure is shown Cucumber-style so it's easy to locate:
   frames removed) and source-mapped by Bun to the original TypeScript, so the
   top frame is the line in your step that actually threw.
 
-Two styles are available via `--reporter`:
+Three styles are available via `--reporter`:
 
 - **`pretty`** (default) — honours `--verbose`: failures-only by default, or the
   full feature → scenario → step tree (each step annotated with its definition
   location) under `--verbose`.
 - **`progress`** — always compact (dots + failures + summary); ignores
   `--verbose`.
+- **`quiet`** — prints a single `running…` line, then nothing per scenario;
+  success produces only the end-of-run summary, while failures still print in
+  the same detail as `pretty`. Good for CI logs where the dot stream is noise.
 
 Colour is emitted only to a TTY and is disabled when `NO_COLOR` is set.

@@ -344,11 +344,36 @@ export function progressReporter(opts: ReporterOptions = {}): Reporter {
   };
 }
 
+/**
+ * Quiet reporter: prints a single `running…` line at the start, then stays
+ * silent for the whole run — no per-scenario heartbeat at all. At the end it
+ * prints the failing scenarios in the same Cucumber-style detail as the other
+ * reporters, followed by the summary. Success produces nothing but that final
+ * summary, which makes it a good fit for CI logs or any context where the dot
+ * stream is just noise.
+ */
+export function quietReporter(opts: ReporterOptions = {}): Reporter {
+  const cwd = opts.cwd ?? process.cwd();
+  // Printed at construction, which happens at run start (see `run()`), so it is
+  // immediate feedback that the run is underway even before the first scenario.
+  write(`${c.dim("running…")}\n`);
+  return {
+    // No `onScenarioEnd`: silence on success is the whole point.
+    onComplete(results, durationMs) {
+      write(
+        `\n${renderFailures(results, cwd)}${renderSummary(results, durationMs)}\n`
+      );
+    },
+  };
+}
+
 export function makeReporter(
-  name: "pretty" | "progress",
+  name: "pretty" | "progress" | "quiet",
   opts: ReporterOptions = {}
 ): Reporter {
-  return name === "progress" ? progressReporter(opts) : prettyReporter(opts);
+  if (name === "progress") return progressReporter(opts);
+  if (name === "quiet") return quietReporter(opts);
+  return prettyReporter(opts);
 }
 
 /**

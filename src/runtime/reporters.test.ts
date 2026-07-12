@@ -1,5 +1,10 @@
 import { test, expect, afterEach } from "bun:test";
-import { eventsReporter, prettyReporter, RunEvent } from "./reporters";
+import {
+  eventsReporter,
+  prettyReporter,
+  quietReporter,
+  RunEvent,
+} from "./reporters";
 import type { ScenarioResult } from "./engine";
 import type { ParsedScenario, ParsedStep } from "../analyzer/types";
 
@@ -153,4 +158,38 @@ test("pretty heartbeat batches dots but flushes every one, in order", () => {
   const marks = heartbeat.match(/[.F-]/g) ?? [];
   expect(marks.length).toBe(500); // nothing lost in the tail
   expect(marks.filter(m => m === "F").length).toBe(5); // the 5 failures
+});
+
+test("quiet reporter prints 'running', nothing per scenario, then failures + summary", () => {
+  cap = captureStdout();
+  const reporter = quietReporter({ cwd: process.cwd() }); // prints 'running…' now
+  const results = [passed("A"), failed("Broken"), passed("C")];
+  reporter.onComplete(results, 5);
+  cap.restore();
+
+  const out = cap.raw();
+  // No per-scenario hook at all — the whole point is silence during the run.
+  expect(reporter.onScenarioEnd).toBeUndefined();
+  expect(out).toContain("running");
+  // Failures are still rendered in Cucumber-style detail.
+  expect(out).toContain("Broken");
+  expect(out).toContain("boom");
+  // ...and the end-of-run summary.
+  expect(out).toContain("3 scenarios");
+  expect(out).toContain("1 failed");
+});
+
+test("quiet reporter is silent on an all-pass run except 'running' + summary", () => {
+  cap = captureStdout();
+  quietReporter({ cwd: process.cwd() }).onComplete(
+    [passed("A"), passed("B")],
+    3
+  );
+  cap.restore();
+
+  const out = cap.raw();
+  expect(out).toContain("running");
+  expect(out).toContain("2 scenarios");
+  // No failure detail block (which would carry a `feature:` location line).
+  expect(out).not.toContain("feature:");
 });
