@@ -8,6 +8,19 @@ export type MergeableWorldState<T> = WorldState<T> & {
   merge: (newState: Partial<T>) => void;
 };
 
+/**
+ * Customizer for `_.mergeWith` (NOT `_.merge` — that has no customizer slot and
+ * would treat this function as an inert extra source, the bug this replaced).
+ *
+ * - Arrays: produce a **new** array of old-then-new elements (`concat`), never a
+ *   per-index merge. Adding `[2]` to `[1]` yields `[1, 2]`, and the previous
+ *   array object is left untouched (so earlier snapshots keep their value).
+ * - A truthy non-plain-object (a scalar, Date, class instance, …) being replaced
+ *   by a different value throws, rather than silently clobbering state.
+ * - Everything else (a new key, or two plain objects) returns `undefined` so
+ *   lodash applies its default: assign / recurse. Returning `objValue` here
+ *   would halt recursion and drop nested updates.
+ */
 function mergeCustomizer(objValue: unknown, srcValue: unknown) {
   if (_.isArray(objValue)) {
     return objValue.concat(srcValue);
@@ -16,7 +29,7 @@ function mergeCustomizer(objValue: unknown, srcValue: unknown) {
       `Merge would have destroyed previous value ${objValue} with ${srcValue}`
     );
   }
-  return objValue;
+  return undefined;
 }
 
 export const createMergeableState = <T>(
@@ -25,7 +38,7 @@ export const createMergeableState = <T>(
   return {
     ...state,
     merge: (newState: Partial<T>) => {
-      state = _.merge({ ...state }, newState, mergeCustomizer);
+      state = _.mergeWith({ ...state }, newState, mergeCustomizer);
     },
   };
 };
@@ -85,7 +98,11 @@ export class BasicWorld<Given, When, Then> {
    * replaces the field, so any snapshot handed out earlier stays untouched.
    */
   public mergeInto(phase: Phase, newState: Record<string, unknown>): void {
-    const merged = _.merge({ ...this.raw(phase) }, newState, mergeCustomizer);
+    const merged = _.mergeWith(
+      { ...this.raw(phase) },
+      newState,
+      mergeCustomizer
+    );
     if (phase === "given") this.givenState = merged as WorldState<Given>;
     else if (phase === "when") this.whenState = merged as WorldState<When>;
     else this.thenState = merged as WorldState<Then>;

@@ -28,11 +28,49 @@ test("mergeInto accumulates keys across successive merges", () => {
   const given = world.given as { a: number; b: number };
   expect(given.a).toBe(1); // earlier key survives a later merge
   expect(given.b).toBe(2); // later key is added
-  // NB: nested-array/scalar merge follows lodash `_.merge` (last-writer-per-path).
-  // The `mergeCustomizer` (array-concat / destructive-merge guard) is currently
-  // inert because the code calls `_.merge(dest, src, customizer)`, where lodash
-  // treats `customizer` as an extra source rather than a merge customizer — it
-  // would need `_.mergeWith`. Pinned here only so the perf work doesn't change it.
+});
+
+test("merging an array concatenates into a new array (no per-index merge)", () => {
+  const world = new BasicWorld<
+    { list: number[]; n: number },
+    unknown,
+    unknown
+  >();
+  world.mergeInto("given", { list: [1], n: 1 });
+  const firstList = (world.given as { list: number[] }).list;
+
+  world.mergeInto("given", { list: [2, 3] });
+
+  const given = world.given as { list: number[]; n: number };
+  expect(given.list).toEqual([1, 2, 3]); // old-then-new, not index-merged to [2, 3]
+  expect(given.n).toBe(1); // untouched keys survive
+  expect(firstList).toEqual([1]); // the earlier array object is left untouched
+});
+
+test("merging nested plain objects deep-merges rather than replacing", () => {
+  const world = new BasicWorld<
+    { o: { a: number; b?: number } },
+    unknown,
+    unknown
+  >();
+  world.mergeInto("given", { o: { a: 1 } });
+  world.mergeInto("given", { o: { b: 2 } });
+
+  expect((world.given as { o: { a: number; b: number } }).o).toEqual({
+    a: 1,
+    b: 2,
+  });
+});
+
+test("overwriting an existing scalar with a different value throws", () => {
+  const world = new BasicWorld<{ a: number }, unknown, unknown>();
+  world.mergeInto("given", { a: 1 });
+
+  expect(() => world.mergeInto("given", { a: 2 })).toThrow(
+    /Merge would have destroyed previous value/
+  );
+  // Re-merging the same value is fine (no destruction).
+  expect(() => world.mergeInto("given", { a: 1 })).not.toThrow();
 });
 
 test("the getter's merge and mergeInto write to the same store", () => {
@@ -46,15 +84,16 @@ test("the getter's merge and mergeInto write to the same store", () => {
 });
 
 test("readState reflects current state but a prior snapshot stays frozen in time", () => {
-  const world = new BasicWorld<{ a: number }, unknown, unknown>();
+  const world = new BasicWorld<{ a: number; b?: number }, unknown, unknown>();
   world.mergeInto("given", { a: 1 });
 
-  const before = world.given as { a: number }; // snapshot taken now
-  world.mergeInto("given", { a: 2 }); // later write replaces the store
+  const before = world.given as { a: number; b?: number }; // snapshot taken now
+  world.mergeInto("given", { b: 2 }); // later write adds a new key
 
-  expect(before.a).toBe(1); // old snapshot untouched by the later merge
-  expect(world.readState("given").a).toBe(2); // live read sees the new value
-  expect((world.given as { a: number }).a).toBe(2);
+  expect(before.a).toBe(1);
+  expect(before.b).toBeUndefined(); // old snapshot didn't gain the later key
+  expect(world.readState("given").b).toBe(2); // live read sees the new value
+  expect((world.given as { b: number }).b).toBe(2);
 });
 
 test("phases are isolated from one another", () => {
