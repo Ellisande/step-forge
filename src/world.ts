@@ -96,13 +96,51 @@ export class BasicWorld<Given, When, Then> {
    * the getters' `merge`, but it skips the whole-state clone the getter would
    * do just to expose `merge`. State is never mutated in place: a new object
    * replaces the field, so any snapshot handed out earlier stays untouched.
+   *
+   * Most step results are shallow objects of plain scalars, where the full
+   * `_.mergeWith` machinery is ~3× the cost of a plain clone-and-assign. We take
+   * that fast path only when it is provably equivalent — every incoming value is
+   * a non-null primitive, no existing key at that slot is an object/array (which
+   * would trigger deep-merge or array-concat), and no scalar is being
+   * destructively overwritten (which must throw). Anything else falls back to
+   * `_.mergeWith` with the exact same customizer, so semantics are identical.
    */
   public mergeInto(phase: Phase, newState: Record<string, unknown>): void {
-    const merged = _.mergeWith(
-      { ...this.raw(phase) },
-      newState,
-      mergeCustomizer
-    );
+    const raw = this.raw(phase);
+    let hasKeys = false;
+    let shallow = true;
+    for (const key in newState) {
+      hasKeys = true;
+      const v = newState[key];
+      const t = typeof v;
+      if (
+        v === null ||
+        t === "object" ||
+        t === "function" ||
+        t === "undefined"
+      ) {
+        shallow = false; // arrays / nested objects / null / undefined → lodash
+        break;
+      }
+      const existing = raw[key];
+      if (existing !== null && typeof existing === "object") {
+        shallow = false; // merging onto an existing array/object → lodash
+        break;
+      }
+      if (existing !== undefined && existing !== v) {
+        shallow = false; // possible destructive overwrite → let lodash decide/throw
+        break;
+      }
+    }
+    if (!hasKeys) return; // nothing to merge (e.g. a void `then` step)
+
+    let merged: Record<string, unknown>;
+    if (shallow) {
+      merged = { ...raw };
+      for (const key in newState) merged[key] = newState[key];
+    } else {
+      merged = _.mergeWith({ ...raw }, newState, mergeCustomizer);
+    }
     if (phase === "given") this.givenState = merged as WorldState<Given>;
     else if (phase === "when") this.whenState = merged as WorldState<When>;
     else this.thenState = merged as WorldState<Then>;

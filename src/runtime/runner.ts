@@ -23,11 +23,17 @@ type WorldFactory = () => MergeableWorld<any, any, any>;
  * Import every step-definition module so its `.step(...)` calls self-register
  * into the shared `globalRegistry`. Imported by file URL so Bun transpiles the
  * TypeScript natively.
+ *
+ * Loaded concurrently so Bun can overlap the file read + transpile of each
+ * module instead of serializing them — a one-time startup win that grows with
+ * the number of step files. Registration order across files becomes
+ * non-deterministic, which is harmless: matching never depends on registration
+ * order (a duplicate expression is an `AmbiguousStepError` however it's ordered),
+ * and each module's `.step()` calls still run atomically (JS is single-threaded;
+ * `Promise.all` only interleaves at the `import` await points).
  */
 async function importSteps(files: string[]): Promise<void> {
-  for (const file of files) {
-    await import(pathToFileURL(file).href);
-  }
+  await Promise.all(files.map(file => import(pathToFileURL(file).href)));
 }
 
 /** Load the configured world factory, or default to a fresh `BasicWorld`. */

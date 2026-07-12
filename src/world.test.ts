@@ -73,6 +73,26 @@ test("overwriting an existing scalar with a different value throws", () => {
   expect(() => world.mergeInto("given", { a: 1 })).not.toThrow();
 });
 
+test("overwriting a falsy scalar with a different value is allowed", () => {
+  // The destroy guard only fires for a *truthy* previous value, so 0 → 5 is a
+  // plain overwrite. Pinned because the shallow-merge fast path must match this.
+  const world = new BasicWorld<{ a: number; ok: boolean }, unknown, unknown>();
+  world.mergeInto("given", { a: 0, ok: false });
+  world.mergeInto("given", { a: 5, ok: true });
+
+  const given = world.given as { a: number; ok: boolean };
+  expect(given.a).toBe(5);
+  expect(given.ok).toBe(true);
+});
+
+test("an empty merge is a no-op and never throws", () => {
+  const world = new BasicWorld<{ a: number }, unknown, unknown>();
+  world.mergeInto("given", { a: 1 });
+
+  expect(() => world.mergeInto("given", {})).not.toThrow();
+  expect((world.given as { a: number }).a).toBe(1);
+});
+
 test("the getter's merge and mergeInto write to the same store", () => {
   const world = new BasicWorld<{ a: number; b: number }, unknown, unknown>();
   world.given.merge({ a: 1 });
