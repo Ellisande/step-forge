@@ -71,8 +71,10 @@ interface ResultsState {
   steps: Counts;
   /** One rendered dot char per finished scenario (`.`/`F`/`-`). */
   dots: string[];
-  /** Rendered Cucumber failure blocks (each multi-line). */
+  /** Rendered Cucumber scenario/error blocks (each multi-line). */
   failures: string[];
+  /** How many of those blocks are failures (vs verbose detail of a pass). */
+  failureCount: number;
   /** Extra lines above the dots: errors, empty notices. */
   notes: string[];
 }
@@ -84,6 +86,7 @@ function freshResults(): ResultsState {
     steps: { passed: 0, failed: 0, skipped: 0 },
     dots: [],
     failures: [],
+    failureCount: 0,
     notes: [],
   };
 }
@@ -179,17 +182,24 @@ export class Prompt {
   /** Push a standalone block into the scrollable failures pane (e.g. a crash). */
   failureBlock(text: string): void {
     this.results.failures.push(text);
+    this.results.failureCount++;
     this.render();
   }
 
-  /** Record one finished scenario: tally it, add its dot, keep any failure block. */
+  /**
+   * Record one finished scenario: tally it, add its dot, keep any detail block
+   * (a failure, or the verbose step tree of a single-scenario run).
+   */
   scenario(status: keyof Counts, steps: Counts, detail?: string): void {
     this.results.scenarios[status]++;
     this.results.steps.passed += steps.passed;
     this.results.steps.failed += steps.failed;
     this.results.steps.skipped += steps.skipped;
     this.results.dots.push(dotFor(status));
-    if (detail) this.results.failures.push(detail);
+    if (detail) {
+      this.results.failures.push(detail);
+      if (status === "failed") this.results.failureCount++;
+    }
     this.render();
   }
 
@@ -571,10 +581,13 @@ export class Prompt {
     const failLines = flattenFailures(this.results.failures);
     const lines = [...above];
     if (failLines.length) {
-      lines.push(
-        "",
-        divider(`failures (${this.results.failures.length})`, cols)
-      );
+      // Verbose detail of a passing single-scenario run is not a failure —
+      // label the pane honestly in that case.
+      const label =
+        this.results.failureCount > 0
+          ? `failures (${this.results.failureCount})`
+          : "detail";
+      lines.push("", divider(label, cols));
       // Reserve one row for the scroll indicator.
       const pane = Math.max(1, rows - lines.length - 1);
       this.failPage = pane;

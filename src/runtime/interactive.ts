@@ -194,7 +194,9 @@ class InteractiveSession {
       return;
     }
 
-    await this.spawnRun(runArgs(choice, this.config));
+    // A selection that resolves to exactly one scenario runs verbose, so the
+    // full step-by-step block shows in the detail pane instead of a lone dot.
+    await this.spawnRun(runArgs(choice, this.config, selected.length === 1));
   }
 
   /** Every scenario across the current catalog, flattened. */
@@ -430,12 +432,20 @@ function choiceLabel(choice: Choice): string {
  *   - feature → that single feature file
  *   - scenario → that feature file, name-anchored with `-n "/^…$/"` (the name is
  *     the outline name for an outline, so all its rows run)
+ * A selection resolving to a single scenario also gets `-v`, so the events
+ * stream carries the full step-by-step detail for it.
  * Always `--events`: the child emits its NDJSON run stream and the TUI renders
  * the results region itself.
  */
-function runArgs(choice: Choice, config: ResolvedConfig): string[] {
+function runArgs(
+  choice: Choice,
+  config: ResolvedConfig,
+  single: boolean
+): string[] {
   // A profile is resolved end-to-end by the child from the shared config file,
   // so hand it only the name (plus `--events`) and let it own every setting.
+  // No `-v` even for a single-scenario count: the parent's profile count is
+  // approximate (it ignores the profile's own `features` narrowing).
   if (choice.kind === "profile") {
     return ["--profile", choice.id, "--events"];
   }
@@ -460,6 +470,7 @@ function runArgs(choice: Choice, config: ResolvedConfig): string[] {
       break;
   }
 
+  if (single) args.push("-v");
   args.push("--events");
   return args;
 }

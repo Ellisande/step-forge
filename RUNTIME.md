@@ -214,9 +214,10 @@ population):
 - **Esc** disarms and returns to browsing.
 - **Ctrl-C** quits and restores the terminal.
 
-A selection that resolves to a **single scenario** is first passed through the
-analyzer, so undefined/ambiguous steps and dependency problems surface (above the
-dots) before it runs.
+A selection that resolves to a **single scenario** runs verbose: the full
+step-by-step block (each step's mark and definition location) shows in the
+detail pane, not just a dot. A scenario outline with a single example row
+counts — it is presented and run as a plain scenario.
 
 Each run executes in a fresh `step-forge` child process, so edited step
 definitions are always picked up — there is no stale module cache between runs.

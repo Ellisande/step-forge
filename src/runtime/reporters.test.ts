@@ -12,7 +12,9 @@ import type { ParsedScenario, ParsedStep } from "../analyzer/types";
  * Unit tests for the internal NDJSON `eventsReporter` — the parent↔child channel
  * behind `step-forge -i`. The TUI parses these events to render the results
  * region, so the contract worth pinning is: one event per scenario, a rendered
- * `detail` block only on failure, and a final `complete` with the duration.
+ * `detail` block only on failure (or on every scenario under `verbose`, which
+ * the TUI requests for single-scenario runs), and a final `complete` with the
+ * duration.
  */
 
 function step(text: string): ParsedStep {
@@ -117,6 +119,21 @@ test("a passing scenario carries step counts and no detail", () => {
     steps: { passed: 1, failed: 0, skipped: 0 },
   });
   expect((event as { detail?: string }).detail).toBeUndefined();
+});
+
+test("verbose: a passing scenario carries the full step-by-step detail block", () => {
+  cap = captureStdout();
+  eventsReporter({ cwd: process.cwd(), verbose: true }).onScenarioEnd!(
+    passed("A")
+  );
+  cap.restore();
+
+  const [event] = cap.lines();
+  expect(event).toMatchObject({ t: "scenario", status: "passed", name: "A" });
+  const detail = (event as { detail?: string }).detail;
+  expect(typeof detail).toBe("string");
+  expect(detail).toContain("A"); // the scenario name heads the block
+  expect(detail).toContain("a thing"); // each step is listed
 });
 
 test("a failing scenario carries a rendered detail block", () => {
