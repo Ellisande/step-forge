@@ -35,11 +35,7 @@ export type RunEvent =
       name: string;
       /** Per-scenario step counts, so the parent can tally steps live. */
       steps: { passed: number; failed: number; skipped: number };
-      /**
-       * Rendered Cucumber scenario block: present when the scenario failed, or
-       * for every scenario under `verbose` (the TUI requests that for
-       * single-scenario runs, so the full step-by-step tree shows).
-       */
+      /** Rendered Cucumber failure block; present only when the scenario failed. */
       detail?: string;
     }
   | { t: "complete"; durationMs: number };
@@ -388,7 +384,6 @@ export function makeReporter(
  */
 export function eventsReporter(opts: ReporterOptions = {}): Reporter {
   const cwd = opts.cwd ?? process.cwd();
-  const verbose = opts.verbose ?? false;
   // Emitted per scenario, unbuffered: the parent TUI renders a live results
   // region from this stream, so immediacy matters more than write throughput
   // here (and interactive runs are small). The dominant cost is the JSON, not
@@ -406,8 +401,8 @@ export function eventsReporter(opts: ReporterOptions = {}): Reporter {
         name: scenarioLabel(result),
         steps,
         detail:
-          status === "failed" || verbose
-            ? renderScenario(result, cwd, { stepSource: verbose })
+          status === "failed"
+            ? renderScenario(result, cwd, { stepSource: false })
             : undefined,
       });
     },

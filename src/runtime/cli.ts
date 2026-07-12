@@ -110,10 +110,7 @@ async function main(): Promise<void> {
     return; // interactive mode manages its own lifecycle and exit code
   }
   const { passed } = events
-    ? await run(
-        config,
-        eventsReporter({ cwd: config.cwd, verbose: config.verbose })
-      )
+    ? await run(config, eventsReporter({ cwd: config.cwd }))
     : await run(config);
   process.exitCode = passed ? 0 : 1;
 }
