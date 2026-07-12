@@ -30,10 +30,22 @@ export const createMergeableState = <T>(
   };
 };
 
+type Phase = "given" | "when" | "then";
+
 export type MergeableWorld<Given, When, Then> = {
   given: MergeableWorldState<Given>;
   when: MergeableWorldState<When>;
   then: MergeableWorldState<Then>;
+  /**
+   * Internal engine fast-path (optional). `BasicWorld` implements these so the
+   * runtime can read a step's declared dependencies and apply its result
+   * *without* cloning the whole phase state on every step — the cost the public
+   * `given`/`when`/`then` getters pay to hand out an isolated snapshot. A custom
+   * world factory may omit them; the engine then falls back to the getters +
+   * `merge` above. They are not part of the user-facing world API.
+   */
+  readState?: (phase: Phase) => Readonly<Record<string, unknown>>;
+  mergeInto?: (phase: Phase, newState: Record<string, unknown>) => void;
 };
 
 export class BasicWorld<Given, When, Then> {
@@ -41,42 +53,65 @@ export class BasicWorld<Given, When, Then> {
   private whenState: WorldState<When> = {};
   private thenState: WorldState<Then> = {};
 
+  /** The live state object for a phase (no copy). */
+  private raw(phase: Phase): Record<string, unknown> {
+    const state =
+      phase === "given"
+        ? this.givenState
+        : phase === "when"
+          ? this.whenState
+          : this.thenState;
+    return state as Record<string, unknown>;
+  }
+
+  /**
+   * Internal engine read: the *live* phase state, returned by reference and
+   * without a clone. The engine reads only the keys a step declared as
+   * dependencies and copies them into a fresh object it hands to the step, so
+   * the live object never reaches user code — the "mutating a read value can't
+   * change world state" guarantee is preserved by that fresh copy, exactly as
+   * the getters preserve it for hooks. Typed `Readonly` because callers must not
+   * mutate it. Not part of the user-facing world API.
+   */
+  public readState(phase: Phase): Readonly<Record<string, unknown>> {
+    return this.raw(phase);
+  }
+
+  /**
+   * Internal engine write: apply a step's returned partial state. This is the
+   * one and only mutation path — a deep merge (arrays concatenate) identical to
+   * the getters' `merge`, but it skips the whole-state clone the getter would
+   * do just to expose `merge`. State is never mutated in place: a new object
+   * replaces the field, so any snapshot handed out earlier stays untouched.
+   */
+  public mergeInto(phase: Phase, newState: Record<string, unknown>): void {
+    const merged = _.merge({ ...this.raw(phase) }, newState, mergeCustomizer);
+    if (phase === "given") this.givenState = merged as WorldState<Given>;
+    else if (phase === "when") this.whenState = merged as WorldState<When>;
+    else this.thenState = merged as WorldState<Then>;
+  }
+
   public get given(): MergeableWorldState<Given> {
     return {
       ...this.givenState,
-      merge: (newState: Partial<Given>) => {
-        this.givenState = _.merge(
-          { ...this.givenState },
-          newState,
-          mergeCustomizer
-        );
-      },
+      merge: (newState: Partial<Given>) =>
+        this.mergeInto("given", newState as Record<string, unknown>),
     };
   }
 
   public get when(): MergeableWorldState<When> {
     return {
       ...this.whenState,
-      merge: (newState: Partial<When>) => {
-        this.whenState = _.merge(
-          { ...this.whenState },
-          newState,
-          mergeCustomizer
-        );
-      },
+      merge: (newState: Partial<When>) =>
+        this.mergeInto("when", newState as Record<string, unknown>),
     };
   }
 
   public get then(): MergeableWorldState<Then> {
     return {
       ...this.thenState,
-      merge: (newState: Partial<Then>) => {
-        this.thenState = _.merge(
-          { ...this.thenState },
-          newState,
-          mergeCustomizer
-        );
-      },
+      merge: (newState: Partial<Then>) =>
+        this.mergeInto("then", newState as Record<string, unknown>),
     };
   }
 }

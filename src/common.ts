@@ -11,8 +11,14 @@ import { MergeableWorld } from "./world";
  * pair, but the key lists are computed once at registration (see `addStep`), so
  * per-execution work is a couple of straight loops with no lodash or
  * `Object.entries`/`filter`/`map` churn. Phases with no declared dependencies
- * skip the world getter entirely (which would otherwise clone the whole phase
- * state) and return a fresh empty object.
+ * skip the state read entirely and return a fresh empty object.
+ *
+ * The `out` object handed to the step is always freshly built here, so mutating
+ * it can never reach world state — the only mutation path is a step's return
+ * value flowing through `merge`/`mergeInto`. That guarantee is why we can read
+ * from the world's *live* state (`readState`, no clone) instead of the cloning
+ * getter: the live object never escapes this function. Custom worlds without
+ * the fast-path fall back to the `given`/`when`/`then` getter.
  */
 function narrowPhase(
   world: MergeableWorld<any, any, any>,
@@ -21,7 +27,9 @@ function narrowPhase(
   requiredKeys: string[]
 ): Record<string, unknown> {
   if (allKeys.length === 0) return {};
-  const state = world[phase] as unknown as Record<string, unknown>;
+  const state = world.readState
+    ? world.readState(phase)
+    : (world[phase] as unknown as Record<string, unknown>);
   const out: Record<string, unknown> = {};
   for (const key of allKeys) {
     if (key in state) out[key] = state[key];
@@ -100,9 +108,11 @@ export const addStep =
         when: narrowPhase(world, "when", whenAllKeys, whenRequiredKeys),
         then: narrowPhase(world, "then", thenAllKeys, thenRequiredKeys),
       } as StepFnInput);
-      world[stepType].merge({
-        ...(result as any),
-      });
+      const produced = { ...(result as any) };
+      // Fast-path merge when the world exposes it (BasicWorld); otherwise go
+      // through the getter's `merge` so custom worlds still work.
+      if (world.mergeInto) world.mergeInto(stepType, produced);
+      else world[stepType].merge(produced);
     };
 
     // Registration is the terminal action of the builder chain: calling

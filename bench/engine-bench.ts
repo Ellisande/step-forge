@@ -32,9 +32,17 @@ const arg = (name: string, fallback: number): number => {
   return v ? Number(v) : fallback;
 };
 const big = process.argv.includes("--big");
-const SCENARIOS = arg("SF_SCENARIOS", big ? 8000 : 3000);
+// `--wide` grows the *number of distinct keys* in world state (a chain of "fact"
+// steps, each depending on the previous and adding its own key). That is what
+// stresses the getter's shallow spread + merge clone — both O(keys) per step —
+// which is the cost the `readState`/`mergeInto` fast-path targets. The default
+// profile keeps state narrow (few keys), where that cost is negligible.
+const wide = process.argv.includes("--wide");
+const SCENARIOS = arg("SF_SCENARIOS", wide ? 1500 : big ? 8000 : 3000);
 const PARAM_STEPS = arg("SF_PARAM_STEPS", big ? 12 : 8);
 const FILLER_DEFS = arg("SF_FILLER_DEFS", big ? 160 : 80);
+// Length of the fact chain in `--wide` mode = keys accumulated per scenario.
+const WIDE_KEYS = arg("SF_WIDE_KEYS", 60);
 const MEASURED_RUNS = arg("SF_RUNS", 5);
 const WARMUP_RUNS = arg("SF_WARMUP", 2);
 
@@ -98,6 +106,21 @@ function registerSteps(): void {
     /* void */
   });
 
+  // Wide-state fact chain: fact `j` depends (required) on fact `j-1`'s key and
+  // adds its own key `f{j}`. Running the chain accumulates WIDE_KEYS distinct
+  // keys in `given` state, so each successive step reads + merges against an
+  // ever-wider object — exactly the O(keys) cost `readState`/`mergeInto` cut.
+  if (wide) {
+    addStep(() => `fact 0 holds`, "given")(() => ({ f0: 1 }));
+    for (let j = 1; j < WIDE_KEYS; j++) {
+      addStep(() => `fact ${j} holds`, "given", {
+        given: { [`f${j - 1}`]: "required" },
+        when: {},
+        then: {},
+      } as any)(() => ({ [`f${j}`]: j + 1 }));
+    }
+  }
+
   // Filler defs never referenced by scenarios — they only inflate the number of
   // definitions `matchStep` must scan per Gherkin step (the O(defs) cost).
   for (let i = 0; i < FILLER_DEFS; i++) {
@@ -125,6 +148,12 @@ function buildScenarios(): ParsedScenario[] {
       step("Given", "the cache is warm", 3),
     ];
     let line = 4;
+    if (wide) {
+      // A chain of fact steps that widens `given` state to WIDE_KEYS keys.
+      for (let j = 0; j < WIDE_KEYS; j++) {
+        steps.push(step("Given", `fact ${j} holds`, line++));
+      }
+    }
     for (let p = 0; p < PARAM_STEPS; p++) {
       // Alternate a quoted-string given and an int given, varying the value.
       if (p % 2 === 0) {
@@ -150,6 +179,26 @@ function buildScenarios(): ParsedScenario[] {
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
+// SF_NO_FASTPATH forces the engine down the getter/`merge` path by handing it a
+// world that hides `readState`/`mergeInto` (as a custom world would). This is
+// the pre-#1 code path, so A/B-ing it against the default measures the fast-path.
+const noFastPath = !!process.env.SF_NO_FASTPATH;
+function makeWorld(): any {
+  const w = new BasicWorld<any, any, any>();
+  if (!noFastPath) return w;
+  return {
+    get given() {
+      return w.given;
+    },
+    get when() {
+      return w.when;
+    },
+    get then() {
+      return w.then;
+    },
+  };
+}
+
 async function runOnce(
   scenarios: ParsedScenario[],
   compiled: ReturnType<typeof compileRegistry>
@@ -158,11 +207,7 @@ async function runOnce(
   let passed = 0;
   let stepCount = 0;
   for (const scenario of scenarios) {
-    const result = await runScenario(
-      scenario,
-      compiled,
-      () => new BasicWorld<any, any, any>()
-    );
+    const result = await runScenario(scenario, compiled, makeWorld);
     if (result.status === "passed") passed++;
     stepCount += result.steps.length;
   }
