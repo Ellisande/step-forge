@@ -1,5 +1,5 @@
 import { test, expect, afterEach } from "bun:test";
-import { eventsReporter, RunEvent } from "./reporters";
+import { eventsReporter, prettyReporter, RunEvent } from "./reporters";
 import type { ScenarioResult } from "./engine";
 import type { ParsedScenario, ParsedStep } from "../analyzer/types";
 
@@ -49,7 +49,11 @@ function failed(name: string): ScenarioResult {
 }
 
 // Capture stdout for the duration of a test.
-function captureStdout(): { lines: () => RunEvent[]; restore: () => void } {
+function captureStdout(): {
+  lines: () => RunEvent[];
+  raw: () => string;
+  restore: () => void;
+} {
   const original = process.stdout.write.bind(process.stdout);
   let buf = "";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,6 +67,7 @@ function captureStdout(): { lines: () => RunEvent[]; restore: () => void } {
         .split("\n")
         .filter(l => l.trim())
         .map(l => JSON.parse(l) as RunEvent),
+    raw: () => buf,
     restore: () => {
       process.stdout.write = original;
     },
@@ -124,4 +129,28 @@ test("a failing scenario carries a rendered detail block", () => {
   expect(typeof detail).toBe("string");
   expect(detail).toContain("Broken"); // the scenario name is in the block
   expect(detail).toContain("boom"); // the error message is rendered
+});
+
+test("pretty heartbeat batches dots but flushes every one, in order", () => {
+  // The buffered writer must not drop the tail: every scenario contributes one
+  // heartbeat mark, regardless of how the writes were batched. (No TTY in tests,
+  // so marks are uncoloured: "." pass / "F" fail.)
+  cap = captureStdout();
+  const reporter = prettyReporter({ cwd: process.cwd() });
+  const results: ScenarioResult[] = [];
+  for (let i = 0; i < 500; i++) {
+    const r = i % 100 === 0 ? failed(`s${i}`) : passed(`s${i}`);
+    results.push(r);
+    reporter.onScenarioEnd!(r);
+  }
+  reporter.onComplete(results, 5);
+  cap.restore();
+
+  // The heartbeat has no newlines; the report body starts with one, so the first
+  // line is the run of marks. Match the mark glyphs directly — any ANSI colour
+  // codes contain none of ".", "F", "-" — so this holds with or without colour.
+  const heartbeat = cap.raw().split("\n")[0];
+  const marks = heartbeat.match(/[.F-]/g) ?? [];
+  expect(marks.length).toBe(500); // nothing lost in the tail
+  expect(marks.filter(m => m === "F").length).toBe(5); // the 5 failures
 });

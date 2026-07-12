@@ -235,6 +235,43 @@ function write(text: string): void {
   process.stdout.write(text);
 }
 
+function now(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+/**
+ * A coalescing writer for the per-scenario heartbeat. Writing one dot per
+ * scenario is one `process.stdout.write` — and thus roughly one syscall — each;
+ * at tens of thousands of fast scenarios that write overhead dwarfs the actual
+ * text and lands on the run's critical path (`onScenarioEnd` is synchronous).
+ *
+ * So we accumulate dots and flush on either cap: `sizeCap` chunks a fast run
+ * into a few big writes (~40× cheaper), while `msCap` bounds latency so a *slow*
+ * run still shows a live heartbeat rather than a delayed burst — the write
+ * batches only as much as the run outpaces the clock. `flush()` must be called
+ * once at the end to emit the tail.
+ */
+function bufferedWriter(sizeCap = 512, msCap = 50) {
+  let buf = "";
+  let count = 0;
+  let last = now();
+  const flush = (): void => {
+    if (buf) {
+      process.stdout.write(buf);
+      buf = "";
+      count = 0;
+    }
+    last = now();
+  };
+  return {
+    push(chunk: string): void {
+      buf += chunk;
+      if (++count >= sizeCap || now() - last >= msCap) flush();
+    },
+    flush,
+  };
+}
+
 /** Feature-grouped tree of every scenario (used by `--verbose`). */
 function renderFullTree(results: ScenarioResult[], cwd: string): string {
   const groups = new Map<string, ScenarioResult[]>();
@@ -271,11 +308,13 @@ function renderFailures(results: ScenarioResult[], cwd: string): string {
 export function prettyReporter(opts: ReporterOptions = {}): Reporter {
   const cwd = opts.cwd ?? process.cwd();
   const verbose = opts.verbose ?? false;
+  const heartbeat = bufferedWriter();
   return {
     onScenarioEnd(result) {
-      if (!verbose) write(scenarioDot(result));
+      if (!verbose) heartbeat.push(scenarioDot(result));
     },
     onComplete(results, durationMs) {
+      heartbeat.flush(); // emit any buffered dots before the report body
       const body = verbose
         ? `\n${renderFullTree(results, cwd)}\n`
         : `\n\n${renderFailures(results, cwd)}`;
@@ -291,11 +330,13 @@ export function prettyReporter(opts: ReporterOptions = {}): Reporter {
  */
 export function progressReporter(opts: ReporterOptions = {}): Reporter {
   const cwd = opts.cwd ?? process.cwd();
+  const heartbeat = bufferedWriter();
   return {
     onScenarioEnd(result) {
-      write(scenarioDot(result));
+      heartbeat.push(scenarioDot(result));
     },
     onComplete(results, durationMs) {
+      heartbeat.flush();
       write(
         `\n\n${renderFailures(results, cwd)}${renderSummary(results, durationMs)}\n`
       );
@@ -318,6 +359,11 @@ export function makeReporter(
  */
 export function eventsReporter(opts: ReporterOptions = {}): Reporter {
   const cwd = opts.cwd ?? process.cwd();
+  // Emitted per scenario, unbuffered: the parent TUI renders a live results
+  // region from this stream, so immediacy matters more than write throughput
+  // here (and interactive runs are small). The dominant cost is the JSON, not
+  // the write. Contrast the human `pretty`/`progress` reporters, whose bulk
+  // heartbeat writes are batched via `bufferedWriter`.
   const emit = (evt: RunEvent): void => write(`${JSON.stringify(evt)}\n`);
   return {
     onScenarioEnd(result) {
