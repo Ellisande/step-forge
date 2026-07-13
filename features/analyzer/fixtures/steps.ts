@@ -1,10 +1,22 @@
 import { givenBuilder } from "../../../src/given";
 import { whenBuilder } from "../../../src/when";
 import { thenBuilder } from "../../../src/then";
+import { intParser, stringParser, Parser } from "../../../src/parsers";
+
+type Color = "red" | "green" | "blue";
+
+// A custom parser declared in this file: the extractor resolves its `{color}`
+// placeholder from this declaration's `name` property.
+const colorParser: Parser<Color, "color"> = {
+  name: "color",
+  regexp: /red|green|blue/,
+  parse: raw => raw as Color,
+};
 
 type GivenState = {
   user: { type: string; token: string };
   account: { id: string };
+  favoriteColor: Color;
 };
 type WhenState = {
   user: { type: string; token: string; saved: boolean };
@@ -37,10 +49,32 @@ givenBuilder<GivenState>()
   });
 
 givenBuilder<GivenState>()
-  .statement((name: string) => `a user named ${name}`)
-  .step(({ variables: [name] }) => {
+  .variables({ name: stringParser })
+  .statement(v => `a user named ${v.name}`)
+  .step(({ variables: { name } }) => {
     return {
       user: { type: "person", token: name },
+    };
+  });
+
+// --- Steps with non-string placeholders (extractor must resolve these) --- //
+
+givenBuilder<GivenState>()
+  .variables({ color: colorParser })
+  .statement(v => `my favorite color is ${v.color}`)
+  .step(({ variables: { color } }) => {
+    return {
+      favoriteColor: color,
+    };
+  });
+
+whenBuilder<GivenState, WhenState>()
+  .variables({ amount: intParser, currency: stringParser })
+  .statement(v => `I deposit ${v.amount} ${v.currency}`)
+  .dependencies({ given: { user: "required" } })
+  .step(() => {
+    return {
+      result: { success: true },
     };
   });
 
@@ -90,7 +124,8 @@ thenBuilder<GivenState, WhenState, ThenState>()
   .step(() => {});
 
 thenBuilder<GivenState, WhenState, ThenState>()
-  .statement((name: string) => `the user's name is ${name}`)
+  .variables({ name: stringParser })
+  .statement(v => `the user's name is ${v.name}`)
   .dependencies({ when: { user: "required" } })
   .step(() => {});
 

@@ -26,11 +26,3 @@ export type Restrict<State, Deps extends RequiredOrOptional<State>> = {
     K in keyof State as K extends keyof Deps ? K : never
   ]: Deps[K] extends "optional" ? State[K] | undefined : State[K];
 };
-
-export type GetFunctionArgs<T> = T extends (...args: infer A) => any
-  ? A
-  : never;
-
-export const isString = (
-  statement: string | ((...args: [...any]) => string)
-): statement is string => typeof statement === "string";

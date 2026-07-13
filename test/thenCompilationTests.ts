@@ -1,4 +1,5 @@
 import { thenBuilder } from "../src/then";
+import { intParser, stringParser } from "../src/parsers";
 import {
   SampleGivenState,
   SampleThenState,
@@ -65,10 +66,11 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
     };
   });
 
-// Simple variables example
+// Variables example
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
-  .statement((v1: string, v2: number) => `Then we should see ${v1} ${v2} times`)
-  .step(({ variables: [v1, v2] }) => {
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `Then we should see ${v.v1} ${v.v2} times`)
+  .step(({ variables: { v1, v2 } }) => {
     return {
       i: { j: `Result ${v1} ${v2}` },
     };
@@ -76,7 +78,8 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
 
 // Complex example with all dependencies
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
-  .statement((v1: string, v2: number) => `Then we should see ${v1} ${v2} times`)
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `Then we should see ${v.v1} ${v.v2} times`)
   .dependencies({
     given: {
       a: "required",
@@ -93,7 +96,7 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
   })
   .step(
     ({
-      variables: [v1, v2],
+      variables: { v1, v2 },
       given: { a, b },
       when: { d, e },
       then: { g, h },
@@ -104,7 +107,22 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
     }
   );
 
+// A string statement keeps its exact literal type on `expression`
+const stringMeta = thenBuilder<
+  SampleGivenState,
+  SampleWhenState,
+  SampleThenState
+>()
+  .statement("Then we should see something")
+  .step(() => {});
+export const exactExpression: "Then we should see something" =
+  stringMeta.expression;
+
 // ----- Should not compile section ----
+
+thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
+  // @ts-expect-error - function statements are gone; declare variables with .variables()
+  .statement((v1: string) => `Then we should see ${v1}`);
 
 // @ts-expect-error - Should not compile without a statement
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>().step(() => {
@@ -112,15 +130,6 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>().step(() => {
     i: { j: "result" },
   };
 });
-
-thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
-  .statement(() => "Then we should see something")
-  // @ts-expect-error - Should not compile since no variables are declared
-  .step(({ variables: [v1, v2] }) => {
-    return {
-      i: { j: `Result ${v1} ${v2}` },
-    };
-  });
 
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
   .statement("Then we should see something")
@@ -132,14 +141,22 @@ thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
   });
 
 thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
-  .statement(
-    (v1: string, v2: number, v3: boolean) =>
-      `Then we should see ${v1} ${v2} ${v3}`
-  )
-  // @ts-expect-error - Should not compile since the number of variables exceeds the number declared
-  .step(({ variables: [v1, v2, v3, v4] }) => {
+  .variables({ v1: stringParser })
+  // @ts-expect-error - the statement can only interpolate declared variable names
+  .statement(v => `Then we should see ${v.nope}`)
+  .step(({ variables: { v1 } }) => {
     return {
-      i: { j: `Result ${v1} ${v2} ${v3} ${v4}` },
+      i: { j: `Result ${v1}` },
+    };
+  });
+
+thenBuilder<SampleGivenState, SampleWhenState, SampleThenState>()
+  .variables({ v1: stringParser })
+  .statement(v => `Then we should see ${v.v1}`)
+  // @ts-expect-error - only declared variable names exist on `variables`
+  .step(({ variables: { v2 } }) => {
+    return {
+      i: { j: `Result ${v2}` },
     };
   });
 

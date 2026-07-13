@@ -18,14 +18,16 @@ const fixturesDir = path.resolve(__dirname, "../analyzer/fixtures");
 // --- Given: point at the fixture files to analyze --- //
 
 givenBuilder<AnalyzerGivenState>()
-  .statement((fileName: string) => `step definitions from ${fileName}`)
-  .step(({ variables: [fileName] }) => ({
+  .variables({ fileName: stringParser })
+  .statement(v => `step definitions from ${v.fileName}`)
+  .step(({ variables: { fileName } }) => ({
     stepFile: path.join(fixturesDir, fileName),
   }));
 
 givenBuilder<AnalyzerGivenState>()
-  .statement((fileName: string) => `a feature file ${fileName}`)
-  .step(({ variables: [fileName] }) => ({
+  .variables({ fileName: stringParser })
+  .statement(v => `a feature file ${v.fileName}`)
+  .step(({ variables: { fileName } }) => ({
     featureFile: path.join(fixturesDir, fileName),
   }));
 
@@ -52,31 +54,29 @@ thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
   });
 
 thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
-  .statement((count: number) => `there should be ${count} error/errors`)
-  .parsers([intParser])
+  .variables({ count: intParser })
+  .statement(v => `there should be ${v.count} error/errors`)
   .dependencies({ when: { diagnostics: "required" } })
-  .step(({ variables: [count], when: { diagnostics } }) => {
+  .step(({ variables: { count }, when: { diagnostics } }) => {
     const errors = diagnostics.filter(d => d.severity === "error");
     expect(errors).toHaveLength(count);
   });
 
 thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
-  .statement((substring: string) => `an error should mention ${substring}`)
+  .variables({ substring: stringParser })
+  .statement(v => `an error should mention ${v.substring}`)
   .dependencies({ when: { diagnostics: "required" } })
-  .step(({ variables: [substring], when: { diagnostics } }) => {
+  .step(({ variables: { substring }, when: { diagnostics } }) => {
     const errors = diagnostics.filter(d => d.severity === "error");
     const found = errors.some(e => e.message.includes(substring));
     expect(found).toEqual(true);
   });
 
 thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
-  .statement(
-    (count: number, rule: string) =>
-      `there is/are ${count} error/errors for rule ${rule}`
-  )
-  .parsers([intParser, stringParser])
+  .variables({ count: intParser, rule: stringParser })
+  .statement(v => `there is/are ${v.count} error/errors for rule ${v.rule}`)
   .dependencies({ when: { diagnostics: "required" } })
-  .step(({ variables: [count, rule], when: { diagnostics } }) => {
+  .step(({ variables: { count, rule }, when: { diagnostics } }) => {
     const errors = diagnostics.filter(
       d => d.severity === "error" && d.rule === rule
     );
@@ -84,13 +84,13 @@ thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
   });
 
 thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({ line: intParser, startCol: intParser, endCol: intParser })
   .statement(
-    (line: number, startCol: number, endCol: number) =>
-      `the error on line ${line} should span columns ${startCol} to ${endCol}`
+    v =>
+      `the error on line ${v.line} should span columns ${v.startCol} to ${v.endCol}`
   )
-  .parsers([intParser, intParser, intParser])
   .dependencies({ when: { diagnostics: "required" } })
-  .step(({ variables: [line, startCol, endCol], when: { diagnostics } }) => {
+  .step(({ variables: { line, startCol, endCol }, when: { diagnostics } }) => {
     const errors = diagnostics.filter(
       d => d.severity === "error" && d.range.startLine === line
     );

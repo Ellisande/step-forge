@@ -2,14 +2,17 @@
 
 import {
   FullDependencies,
-  GetFunctionArgs,
-  isString,
   RequiredOrOptional,
   Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser } from "./parsers";
+import {
+  NoVariables,
+  VariableMap,
+  VariablesOf,
+  VariableTokens,
+} from "./variables";
 
 const THEN: StepType = "then";
 
@@ -25,10 +28,11 @@ type ThenInput<Variables, Given, When, Then> = {
 type ThenOutput<ThenState> =
   Partial<ThenState> | Promise<Partial<ThenState>> | void | Promise<void>;
 
+// Shared dependencies stage for both entry styles; see given.ts for the shape.
 const thenDependencies =
-  <Variables, GivenState, WhenState, ThenState>(
-    statement: (...args: any[]) => string,
-    parsers?: Parser<any>[]
+  <Variables, Expr extends string, GivenState, WhenState, ThenState>(
+    statement: (tokens: any) => string,
+    variables: VariableMap
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -46,7 +50,8 @@ const thenDependencies =
         Restrict<WhenState, WhenDeps>,
         Restrict<ThenState, ThenDeps>
       >,
-      ThenOutput<ThenState>
+      ThenOutput<ThenState>,
+      Expr
     >(
       statement,
       THEN,
@@ -55,54 +60,56 @@ const thenDependencies =
         when: dependencies.when ?? {},
         then: dependencies.then ?? {},
       } as FullDependencies,
-      parsers
+      variables
     ),
   });
 
-const thenParsers =
-  <Variables extends any[], GivenState, WhenState, ThenState>(
-    statement: (...args: any[]) => string
-  ) =>
-  <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
-    parsers: Parsers
-  ) => ({
-    dependencies: thenDependencies<Variables, GivenState, WhenState, ThenState>(
-      statement,
-      parsers as unknown as Parser<any>[]
-    ),
-    step: addStep<
-      ThenInput<Variables, never, never, never>,
-      ThenOutput<ThenState>
-    >(statement, THEN, undefined, parsers as unknown as Parser<any>[]),
-  });
-
-const thenStatement =
+// The variable chain: `.variables({name: parser}).statement(v => ...)`; see
+// given.ts for the pattern.
+const thenVariables =
   <GivenState, WhenState, ThenState>() =>
-  <Statement extends ((...args: [...any]) => string) | string>(
-    statement: Statement
-  ) => {
-    const normalizedStatement: (...args: any[]) => string = isString(statement)
-      ? () => statement
-      : (statement as (...args: any[]) => string);
-
-    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
-    return {
+  <Map extends VariableMap>(variables: Map) => ({
+    statement: <Expr extends string>(
+      statement: (tokens: VariableTokens<Map>) => Expr
+    ) => ({
       dependencies: thenDependencies<
-        Variables,
+        VariablesOf<Map>,
+        Expr,
         GivenState,
         WhenState,
         ThenState
-      >(normalizedStatement),
-      parsers: thenParsers<Variables, GivenState, WhenState, ThenState>(
-        normalizedStatement
-      ),
+      >(statement, variables),
       step: addStep<
-        ThenInput<Variables, never, never, never>,
-        ThenOutput<ThenState>
-      >(normalizedStatement, THEN),
+        ThenInput<VariablesOf<Map>, never, never, never>,
+        ThenOutput<ThenState>,
+        Expr
+      >(statement, THEN, undefined, variables),
+    }),
+  });
+
+// A statement with no variables is a plain string; `Expr` keeps its exact
+// literal type on the registered step's `expression`.
+const thenStatement =
+  <GivenState, WhenState, ThenState>() =>
+  <Expr extends string>(statement: Expr) => {
+    const statementFn = () => statement;
+    return {
+      dependencies: thenDependencies<
+        NoVariables,
+        Expr,
+        GivenState,
+        WhenState,
+        ThenState
+      >(statementFn, {}),
+      step: addStep<
+        ThenInput<NoVariables, never, never, never>,
+        ThenOutput<ThenState>,
+        Expr
+      >(statementFn, THEN, undefined, {}),
     };
   };
 
 export const thenBuilder = <GivenState, WhenState, ThenState>() => ({
   statement: thenStatement<GivenState, WhenState, ThenState>(),
+  variables: thenVariables<GivenState, WhenState, ThenState>(),
 });

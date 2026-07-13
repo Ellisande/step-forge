@@ -58,6 +58,13 @@ export {
 
 export type { Parser };
 export type {
+  NoVariables,
+  Variable,
+  VariableMap,
+  VariableTokens,
+  VariablesOf,
+} from "./variables";
+export type {
   ScenarioInfo,
   PlainHookFn,
   ScenarioHookFn,

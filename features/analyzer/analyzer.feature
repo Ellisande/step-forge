@@ -30,6 +30,11 @@ Feature: Analyzer dependency verification
     When I analyze the files
     Then there should be no errors
 
+  Scenario: Named variables with int and custom parsers produce no errors
+    Given a feature file "valid-parsers.feature"
+    When I analyze the files
+    Then there should be no errors
+
   # --- Undefined step scenarios ---
 
   Scenario: Undefined step reports an error
@@ -48,6 +53,14 @@ Feature: Analyzer dependency verification
     And an error should mention "I do something that does not exist"
     And there is 1 error for rule "dependency-check"
     And an error should mention "given.user"
+
+  Scenario: Step text that cannot satisfy the declared placeholders reports undefined steps
+    Given a feature file "mismatched-parsers.feature"
+    When I analyze the files
+    Then there should be 2 errors
+    And there are 2 errors for rule "undefined-step"
+    And an error should mention "my favorite color is purple"
+    And an error should mention "I deposit ten"
 
   # --- Ambiguous step scenarios ---
 

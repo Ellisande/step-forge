@@ -32,3 +32,8 @@ Feature: Steps written in gherkin can be matched to Step Forge steps
     Scenario: A custom parser introduces a new placeholder type
         Given my favorite color is green
         Then the favorite color is green
+
+    Scenario: Steps can declare named variables and access them by name
+        Given a registered user named "Ada"
+        When I transfer "EUR" in the amount of 250
+        Then the transfer was 250 "EUR"
