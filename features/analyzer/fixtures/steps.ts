@@ -7,7 +7,7 @@ type Color = "red" | "green" | "blue";
 
 // A custom parser declared in this file: the extractor resolves its `{color}`
 // placeholder from this declaration's `name` property.
-const colorParser: Parser<Color, "color"> = {
+const colorParser: Parser<Color> = {
   name: "color",
   regexp: /red|green|blue/,
   parse: raw => raw as Color,

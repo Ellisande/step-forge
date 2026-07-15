@@ -13,8 +13,9 @@ export type VariableMap = Record<string, Parser<any>>;
 declare const variableTokenBrand: unique symbol;
 
 /**
- * Interpolation-only placeholder for a step variable: matches `{Name}` in the
- * step text and resolves to a `T` in the step function's `variables`.
+ * Interpolation-only placeholder for a step variable that resolves to a `T`
+ * in the step function's `variables` — visible on hover as the type argument,
+ * `Variable<number>`.
  *
  * Handed to a named statement function, one per declared variable.
  * Interpolating it into the statement template
@@ -23,21 +24,16 @@ declare const variableTokenBrand: unique symbol;
  * placeholder (`{string}`, `{int}`, `{color}`, …) and records the
  * interpolation order, which is how captured values are mapped back to
  * variable *names* at run time. The brand makes any other use — arithmetic,
- * string methods, comparisons — a type error. The `placeholder` property is a
- * type-level hint only (it does not exist at runtime): both type arguments are
- * visible on hover, so a statement author can see what the variable matches
- * and what their step will receive.
+ * string methods, comparisons, property access — a type error.
  */
-export type Variable<T, Name extends string = string> = {
-  /** The cucumber-expression placeholder this variable renders as. Type-level only. */
-  readonly placeholder: `{${Name}}`;
+export type Variable<T> = {
   readonly [variableTokenBrand]: T;
 };
 
 /** The token object a named statement function receives: one token per declared variable. */
 export type VariableTokens<Map extends VariableMap> = {
-  readonly [K in keyof Map]: Map[K] extends Parser<infer T, infer Name>
-    ? Variable<T, Name>
+  readonly [K in keyof Map]: Map[K] extends Parser<infer T>
+    ? Variable<T>
     : never;
 };
 

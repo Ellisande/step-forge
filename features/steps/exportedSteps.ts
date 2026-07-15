@@ -3,15 +3,16 @@ import { createBuilders } from "../../src/init";
 import { numberParser, stringParser } from "../../src/parsers";
 import { GivenState, ThenState, WhenState } from "./world";
 
-// Demo of the pre-bound builder style: `Given("...")` for plain statements,
-// `Given.variables({...}).statement(v => ...)` for statements with variables.
+// Demo of the pre-bound builder style: `Given.statement("...")` for plain
+// statements, `Given.variables({...}).statement(v => ...)` for statements
+// with variables.
 const { Given, When, Then } = createBuilders<
   GivenState,
   WhenState,
   ThenState
 >();
 
-Given("a bank user").step(() => {
+Given.statement("a bank user").step(() => {
   return {
     user: {
       type: "customer",

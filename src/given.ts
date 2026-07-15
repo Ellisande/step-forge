@@ -53,6 +53,24 @@ const givenDependencies =
     ),
   });
 
+// The `{dependencies, step}` stage both entry styles land on, with `Variables`
+// already resolved to what the step function sees.
+const givenChain = <Variables, Expr extends string, GivenState>(
+  statement: (tokens: any) => string,
+  variables: VariableMap
+) => ({
+  dependencies: givenDependencies<Variables, Expr, GivenState>(
+    statement,
+    variables
+  ),
+  step: addStep<GivenInput<Variables, never>, GivenOutput<GivenState>, Expr>(
+    statement,
+    GIVEN,
+    undefined,
+    variables
+  ),
+});
+
 // The variable chain: `.variables({name: parser}).statement(v => ...)`. The
 // map fixes the variable names and (through each parser) their types; the
 // statement interpolates opaque tokens; the step function receives `variables`
@@ -63,37 +81,15 @@ const givenVariables =
   <Map extends VariableMap>(variables: Map) => ({
     statement: <Expr extends string>(
       statement: (tokens: VariableTokens<Map>) => Expr
-    ) => ({
-      dependencies: givenDependencies<VariablesOf<Map>, Expr, GivenState>(
-        statement,
-        variables
-      ),
-      step: addStep<
-        GivenInput<VariablesOf<Map>, never>,
-        GivenOutput<GivenState>,
-        Expr
-      >(statement, GIVEN, undefined, variables),
-    }),
+    ) => givenChain<VariablesOf<Map>, Expr, GivenState>(statement, variables),
   });
 
 // A statement with no variables is a plain string; `Expr` keeps its exact
 // literal type on the registered step's `expression`.
 const givenStatement =
   <GivenState>() =>
-  <Expr extends string>(statement: Expr) => {
-    const statementFn = () => statement;
-    return {
-      dependencies: givenDependencies<NoVariables, Expr, GivenState>(
-        statementFn,
-        {}
-      ),
-      step: addStep<
-        GivenInput<NoVariables, never>,
-        GivenOutput<GivenState>,
-        Expr
-      >(statementFn, GIVEN, undefined, {}),
-    };
-  };
+  <Expr extends string>(statement: Expr) =>
+    givenChain<NoVariables, Expr, GivenState>(() => statement, {});
 
 export const givenBuilder = <GivenState>() => ({
   statement: givenStatement<GivenState>(),

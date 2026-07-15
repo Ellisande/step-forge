@@ -64,6 +64,32 @@ const thenDependencies =
     ),
   });
 
+// The `{dependencies, step}` stage both entry styles land on, with `Variables`
+// already resolved to what the step function sees.
+const thenChain = <
+  Variables,
+  Expr extends string,
+  GivenState,
+  WhenState,
+  ThenState,
+>(
+  statement: (tokens: any) => string,
+  variables: VariableMap
+) => ({
+  dependencies: thenDependencies<
+    Variables,
+    Expr,
+    GivenState,
+    WhenState,
+    ThenState
+  >(statement, variables),
+  step: addStep<
+    ThenInput<Variables, never, never, never>,
+    ThenOutput<ThenState>,
+    Expr
+  >(statement, THEN, undefined, variables),
+});
+
 // The variable chain: `.variables({name: parser}).statement(v => ...)`; see
 // given.ts for the pattern.
 const thenVariables =
@@ -71,43 +97,22 @@ const thenVariables =
   <Map extends VariableMap>(variables: Map) => ({
     statement: <Expr extends string>(
       statement: (tokens: VariableTokens<Map>) => Expr
-    ) => ({
-      dependencies: thenDependencies<
-        VariablesOf<Map>,
-        Expr,
-        GivenState,
-        WhenState,
-        ThenState
-      >(statement, variables),
-      step: addStep<
-        ThenInput<VariablesOf<Map>, never, never, never>,
-        ThenOutput<ThenState>,
-        Expr
-      >(statement, THEN, undefined, variables),
-    }),
+    ) =>
+      thenChain<VariablesOf<Map>, Expr, GivenState, WhenState, ThenState>(
+        statement,
+        variables
+      ),
   });
 
 // A statement with no variables is a plain string; `Expr` keeps its exact
 // literal type on the registered step's `expression`.
 const thenStatement =
   <GivenState, WhenState, ThenState>() =>
-  <Expr extends string>(statement: Expr) => {
-    const statementFn = () => statement;
-    return {
-      dependencies: thenDependencies<
-        NoVariables,
-        Expr,
-        GivenState,
-        WhenState,
-        ThenState
-      >(statementFn, {}),
-      step: addStep<
-        ThenInput<NoVariables, never, never, never>,
-        ThenOutput<ThenState>,
-        Expr
-      >(statementFn, THEN, undefined, {}),
-    };
-  };
+  <Expr extends string>(statement: Expr) =>
+    thenChain<NoVariables, Expr, GivenState, WhenState, ThenState>(
+      () => statement,
+      {}
+    );
 
 export const thenBuilder = <GivenState, WhenState, ThenState>() => ({
   statement: thenStatement<GivenState, WhenState, ThenState>(),

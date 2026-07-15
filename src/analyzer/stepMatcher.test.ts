@@ -97,13 +97,26 @@ describe("stepMatcher placeholder patterns", () => {
     expect(findMatchingDefinitions("A User", "Given", [user])).toHaveLength(0);
   });
 
-  it("literal regex characters in expressions stay literal", () => {
-    const parens = def("given", "a user (admin) with $5");
+  it("cucumber optional text matches like the runtime engine", () => {
+    const cukes = def("when", "I have {int} cucumber(s)");
     expect(
-      findMatchingDefinitions("a user (admin) with $5", "Given", [parens])
+      findMatchingDefinitions("I have 1 cucumber", "When", [cukes])
     ).toHaveLength(1);
     expect(
-      findMatchingDefinitions("a user admin with $5", "Given", [parens])
+      findMatchingDefinitions("I have 2 cucumbers", "When", [cukes])
+    ).toHaveLength(1);
+  });
+
+  it("cucumber alternation matches like the runtime engine", () => {
+    const errors = def("then", "there is/are {int} error/errors");
+    expect(
+      findMatchingDefinitions("there is 1 error", "Then", [errors])
+    ).toHaveLength(1);
+    expect(
+      findMatchingDefinitions("there are 2 errors", "Then", [errors])
+    ).toHaveLength(1);
+    expect(
+      findMatchingDefinitions("there was 1 error", "Then", [errors])
     ).toHaveLength(0);
   });
 });

@@ -13,9 +13,7 @@ import { expect } from "earl";
 
 // A custom parser introducing a brand-new `{color}` placeholder: only
 // `red|green|blue` match, so anything else is an undefined step at match time.
-// The literal `"color"` name type makes named-variable hovers show
-// `Variable<Color, "color">` instead of `Variable<Color, string>`.
-const colorParser: Parser<Color, "color"> = {
+const colorParser: Parser<Color> = {
   name: "color",
   regexp: /red|green|blue/,
   parse: raw => raw as Color,

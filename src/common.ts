@@ -48,25 +48,6 @@ const requiredKeysOf = (deps: DepMap): string[] =>
   Object.keys(deps).filter(key => deps[key] === "required");
 
 /**
- * Everything the registration core needs beyond the step function itself.
- * Built by `addStep`; `registerStep` is the shared registration tail.
- */
-type StepRuntimeConfig = {
-  statement: (...args: any[]) => string;
-  /** The finished cucumber expression, placeholders already rendered. */
-  expression: string;
-  /** Parsers in capture-group order — exactly what the engine registers. */
-  parsers: Parser<any>[];
-  /**
-   * Shape the matcher's positional captures into the name-keyed `variables`
-   * object the step function sees.
-   */
-  toVariables: (capturedArgs: unknown[]) => unknown;
-  stepType: StepType;
-  dependencies: FullDependencies;
-};
-
-/**
  * The runtime core of the builder chain, phase-agnostic: the calling builder
  * has already computed the exact type of the step function via the type
  * parameters:
@@ -78,20 +59,26 @@ type StepRuntimeConfig = {
  *   string statement, a `${string}`-holed template type for a token statement.
  *   The returned metadata's `expression` carries it.
  *
- * Everything else is plain runtime data carried in the config, so `registerStep`
- * carries no generics for it.
+ * The `.variables()` map declares name → parser, the statement interpolates
+ * opaque tokens (a string statement is normalized by the builder to
+ * `() => statement` with an empty map), and the step function receives
+ * `variables` as a name-keyed object. The token dance in
+ * `renderNamedExpression` recovers the interpolation order, which is the
+ * bridge between the matcher's positional captures and the named object.
  */
-const registerStep =
-  <StepFnInput, StepFnOutput, Expr extends string>(config: StepRuntimeConfig) =>
-  (stepFunction: (input: StepFnInput) => StepFnOutput) => {
-    const {
-      statement,
-      expression,
-      parsers,
-      toVariables,
-      stepType,
-      dependencies,
-    } = config;
+export const addStep = <StepFnInput, StepFnOutput, Expr extends string>(
+  statement: (tokens: any) => string,
+  stepType: StepType,
+  dependencies: FullDependencies = {
+    given: {},
+    when: {},
+    then: {},
+  },
+  variables: VariableMap = {}
+) => {
+  const { expression, order } = renderNamedExpression(statement, variables);
+  const parsers: Parser<any>[] = order.map(name => variables[name]);
+  return (stepFunction: (input: StepFnInput) => StepFnOutput) => {
     const {
       given: givenDependencies,
       when: whenDependencies,
@@ -117,8 +104,14 @@ const registerStep =
       world: MergeableWorld<any, any, any>,
       capturedArgs: unknown[]
     ) => {
+      // Zip the matcher's positional captures with the recorded interpolation
+      // order to build the name-keyed `variables` object.
+      const named: Record<string, unknown> = {};
+      for (let i = 0; i < order.length; i++) {
+        named[order[i]] = capturedArgs[i];
+      }
       const result = await stepFunction({
-        variables: toVariables(capturedArgs),
+        variables: named,
         given: narrowPhase(world, "given", givenAllKeys, givenRequiredKeys),
         when: narrowPhase(world, "when", whenAllKeys, whenRequiredKeys),
         then: narrowPhase(world, "then", thenAllKeys, thenRequiredKeys),
@@ -145,38 +138,4 @@ const registerStep =
       stepFunction,
     };
   };
-
-/**
- * Registration for the builder chain: the `.variables()` map declares
- * name → parser, the statement interpolates opaque tokens (a string statement
- * is normalized by the builder to `() => statement` with an empty map), and
- * the step function receives `variables` as a name-keyed object. The token
- * dance in `renderNamedExpression` recovers the interpolation order, which is
- * the bridge between the matcher's positional captures and the named object.
- */
-export const addStep = <StepFnInput, StepFnOutput, Expr extends string>(
-  statement: (tokens: any) => string,
-  stepType: StepType,
-  dependencies: FullDependencies = {
-    given: {},
-    when: {},
-    then: {},
-  },
-  variables: VariableMap = {}
-) => {
-  const { expression, order } = renderNamedExpression(statement, variables);
-  return registerStep<StepFnInput, StepFnOutput, Expr>({
-    statement,
-    expression,
-    parsers: order.map(name => variables[name]),
-    toVariables: capturedArgs => {
-      const named: Record<string, unknown> = {};
-      for (let i = 0; i < order.length; i++) {
-        named[order[i]] = capturedArgs[i];
-      }
-      return named;
-    },
-    stepType,
-    dependencies,
-  });
 };

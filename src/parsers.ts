@@ -17,14 +17,9 @@
  * variable type. `booleanParser` has no built-in equivalent, so it is a genuine
  * custom parameter type whose `parse` runs at match time.
  */
-export type Parser<T, Name extends string = string> = {
-  /**
-   * Parameter-type name; the step expression uses `{name}` as the placeholder.
-   * Declaring it as a literal type (`Parser<Color, "color">`) lets the builder
-   * surface the placeholder in editor hovers on named variables — the default
-   * `string` keeps loosely-typed parsers working, at the cost of that hint.
-   */
-  name: Name;
+export type Parser<T> = {
+  /** Parameter-type name; the step expression uses `{name}` as the placeholder. */
+  name: string;
   /** How cucumber-expressions recognises the value in the step text. */
   regexp: RegExp | RegExp[];
   /** Transform the matched text into the typed value. */
@@ -32,7 +27,7 @@ export type Parser<T, Name extends string = string> = {
 };
 
 /** Matches a quoted string (`{string}`) and strips the surrounding quotes. */
-export const stringParser: Parser<string, "string"> = {
+export const stringParser: Parser<string> = {
   name: "string",
   regexp: [/"([^"\\]*(\\.[^"\\]*)*)"/, /'([^'\\]*(\\.[^'\\]*)*)'/],
   parse: value => {
@@ -42,14 +37,14 @@ export const stringParser: Parser<string, "string"> = {
 };
 
 /** Matches an unquoted integer (`{int}`). */
-export const intParser: Parser<number, "int"> = {
+export const intParser: Parser<number> = {
   name: "int",
   regexp: /-?\d+/,
   parse: value => parseInt(value, 10),
 };
 
 /** Matches an unquoted floating point number (`{float}`). */
-export const numberParser: Parser<number, "float"> = {
+export const numberParser: Parser<number> = {
   name: "float",
   regexp: /-?\d*\.?\d+/,
   parse: value => parseFloat(value),
@@ -60,7 +55,7 @@ export const numberParser: Parser<number, "float"> = {
  * boolean. Unlike the others this is a genuine custom parameter type — cucumber
  * has no built-in `boolean` — so its `regexp`/`parse` are what the matcher uses.
  */
-export const booleanParser: Parser<boolean, "boolean"> = {
+export const booleanParser: Parser<boolean> = {
   name: "boolean",
   regexp: /true|false/,
   parse: value => value === "true",
