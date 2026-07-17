@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { analyze } from "./index.js";
 import { globFiles } from "../globFiles.js";
 import { buildCatalog, filterCatalog } from "./catalog.js";
@@ -315,13 +317,24 @@ async function main() {
   process.exit(errors.length > 0 ? 1 : 0);
 }
 
-// Only run when invoked directly (not when imported by Cucumber or other tools)
-const isDirectRun =
-  import.meta.url === `file://${process.argv[1]}` ||
-  process.argv[1]?.endsWith("analyzer-cli.js") ||
-  process.argv[1]?.endsWith("analyzer-cli.ts");
+// Run main() only when this file is the process entry point, not when imported.
+// Compare *real* paths: package managers expose the bin as a differently-named
+// symlink (node_modules/.bin/step-forge-analyze -> dist/analyzer-cli.js), so
+// `process.argv[1]` ends in "step-forge-analyze" while `import.meta.url` is the
+// resolved module path. Resolving both through realpath makes the two match
+// whether launched by bin name or by file path, under node or bun. The previous
+// string/endsWith check silently did nothing when run via the installed bin.
+function invokedAsScript(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
 
-if (isDirectRun) {
+if (invokedAsScript()) {
   main().catch(err => {
     console.error("Analyzer failed:", err);
     process.exit(1);

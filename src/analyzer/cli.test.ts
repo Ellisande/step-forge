@@ -25,8 +25,19 @@ fs.writeFileSync(
 `
 );
 
+// A directory holding a differently-named symlink to the built bin, to
+// reproduce how package managers expose it (node_modules/.bin/step-forge-analyze
+// -> dist/analyzer-cli.js).
+const binLinkDir = fs.mkdtempSync(path.join(os.tmpdir(), "sf-analyze-bin-"));
+const builtBin = path.join(repoRoot, "build/dist/analyzer-cli.js");
+const binSymlink = path.join(binLinkDir, "step-forge-analyze");
+if (fs.existsSync(builtBin)) {
+  fs.symlinkSync(builtBin, binSymlink);
+}
+
 afterAll(() => {
   fs.rmSync(configDir, { recursive: true, force: true });
+  fs.rmSync(binLinkDir, { recursive: true, force: true });
 });
 
 function runCli(cwd: string, ...args: string[]) {
@@ -138,5 +149,25 @@ describe("step-forge-analyze (diagnostics)", () => {
     const result = runCli(configDir, "--features", "no/such/dir/**/*.feature");
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain("no feature files matched");
+  });
+});
+
+// The bin is exposed by package managers as a differently-named symlink
+// (node_modules/.bin/step-forge-analyze). Node does not resolve that symlink for
+// process.argv[1], so the entry-point guard must compare *real* paths — an
+// endsWith("analyzer-cli.js") check silently no-ops here. Requires a build;
+// skipped when build/dist is absent (e.g. a bare `bun test src` with no build).
+describe("step-forge-analyze bin entry point", () => {
+  const maybeIt = fs.existsSync(builtBin) ? it : it.skip;
+
+  maybeIt("runs when launched under node via a renamed bin symlink", () => {
+    const result = Bun.spawnSync(
+      ["node", binSymlink, "catalog", "--steps", fixtureStepFile, "--json"],
+      { cwd: repoRoot }
+    );
+    expect(result.exitCode).toBe(0);
+    const catalog = JSON.parse(result.stdout.toString()) as StepCatalog;
+    expect(catalog.version).toBe(1);
+    expect(catalog.steps.length).toBeGreaterThan(0);
   });
 });
