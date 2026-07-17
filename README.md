@@ -354,3 +354,14 @@ Notes on the contract:
 - `sourceFile` (and `id`, which is `sourceFile:line`) are absolute paths; relativize against your workspace root if needed.
 - `produces` is best-effort static inference from the step function's return value. Object-literal returns are read directly; other return shapes fall back to the TypeScript type checker, and a shape the analyzer cannot resolve yields an empty list.
 - When filters are passed alongside `--json`, the envelope contains only the matching steps.
+
+#### Agent Skill
+
+The package ships a ready-made [Claude Code skill](https://code.claude.com/docs/en/skills) (`skills/step-catalog/`) that teaches coding agents to query the catalog before writing scenarios or new step definitions — finding reusable steps and ordering them so every declared dependency is satisfied. To enable it in your project, copy it into your skills directory:
+
+```bash
+mkdir -p .claude/skills
+cp -r node_modules/@step-forge/step-forge/skills/step-catalog .claude/skills/
+```
+
+Claude Code discovers it automatically on the next session. The skill shells out to `step-forge-analyze catalog`, so it needs no setup beyond the dependency you already have.

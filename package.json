@@ -41,7 +41,7 @@
   },
   "types": "./dist/step-forge.d.ts",
   "scripts": {
-    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md RUNTIME.md LICENSE.md CHANGELOG.md build/",
+    "build": "rm -rf build && tsc --noEmit && tsdown && cp package.json README.md RUNTIME.md LICENSE.md CHANGELOG.md build/ && cp -r skills build/",
     "test": "bun run test:unit && bun run test:features",
     "test:unit": "bun test src",
     "test:features": "bun src/runtime/cli.ts",
