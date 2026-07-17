@@ -296,3 +296,61 @@ Feature: Updating a user's username
 Additionally when adding a step to a feature file, if the step has unfulfilled dependencies, the extension will show a list of steps that can be used to fulfill the dependencies.
 
 ![Step Forge Autocomplete Demo](./docs/assets/state_deps.gif)
+
+### Step Catalog
+
+The analyzer can also produce a **catalog** of every implemented step definition — statically extracted from your step files, no code executed — filterable by step type, expression text, consumed state (declared via `.dependencies()`), and produced state (the keys a step function returns, inferred best-effort from its return value).
+
+From the API (`@step-forge/step-forge/analyzer`):
+
+```ts
+import { buildCatalog, filterCatalog } from "@step-forge/step-forge/analyzer";
+
+const catalog = await buildCatalog({ stepFiles: ["features/steps/**/*.ts"] });
+
+// Pure, in-memory filtering — build once, query repeatedly.
+const savers = filterCatalog(catalog.steps, {
+  stepType: "when",
+  consumes: { key: "user", phase: "given", requirement: "required" },
+});
+```
+
+From the CLI:
+
+```bash
+step-forge-analyze catalog                       # step globs from step-forge.config.ts
+step-forge-analyze catalog --json                # machine-readable envelope
+step-forge-analyze catalog --consumes given.user:required --type when
+step-forge-analyze catalog --produces result
+step-forge-analyze catalog --text "deposit"
+```
+
+`--json` emits a versioned envelope that is the stable contract for external tools (IDE integrations, agent tooling):
+
+```json
+{
+  "version": 1,
+  "steps": [
+    {
+      "id": "/abs/path/steps.ts:71",
+      "stepType": "when",
+      "expression": "I deposit {int} {string}",
+      "dependencies": {
+        "given": { "user": "required" },
+        "when": {},
+        "then": {}
+      },
+      "produces": ["result"],
+      "sourceFile": "/abs/path/steps.ts",
+      "line": 71
+    }
+  ]
+}
+```
+
+Notes on the contract:
+
+- `version` is bumped only on breaking shape changes; additive fields do not bump it.
+- `sourceFile` (and `id`, which is `sourceFile:line`) are absolute paths; relativize against your workspace root if needed.
+- `produces` is best-effort static inference from the step function's return value. Object-literal returns are read directly; other return shapes fall back to the TypeScript type checker, and a shape the analyzer cannot resolve yields an empty list.
+- When filters are passed alongside `--json`, the envelope contains only the matching steps.

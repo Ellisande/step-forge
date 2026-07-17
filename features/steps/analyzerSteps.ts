@@ -5,7 +5,7 @@ import { givenBuilder } from "../../src/given";
 import { whenBuilder } from "../../src/when";
 import { thenBuilder } from "../../src/then";
 import { intParser, stringParser } from "../../src/parsers";
-import { analyze } from "../../src/analyzer/index";
+import { analyze, buildCatalog, filterCatalog } from "../../src/analyzer/index";
 import {
   AnalyzerGivenState,
   AnalyzerWhenState,
@@ -41,6 +41,13 @@ whenBuilder<AnalyzerGivenState, AnalyzerWhenState>()
       stepFiles: [stepFile],
       featureFiles: [featureFile],
     }),
+  }));
+
+whenBuilder<AnalyzerGivenState, AnalyzerWhenState>()
+  .statement("I build the step catalog")
+  .dependencies({ given: { stepFile: "required" } })
+  .step(async ({ given: { stepFile } }) => ({
+    catalog: await buildCatalog({ stepFiles: [stepFile] }),
   }));
 
 // --- Then: assert over the produced diagnostics --- //
@@ -99,4 +106,69 @@ thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
     expect(error.range.startColumn).toEqual(startCol);
     expect(error.range.endColumn).toEqual(endCol);
     expect(error.range.endLine).toEqual(line);
+  });
+
+// --- Then: assert over the built catalog --- //
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({ stepType: stringParser, expression: stringParser })
+  .statement(v => `the catalog contains a ${v.stepType} step ${v.expression}`)
+  .dependencies({ when: { catalog: "required" } })
+  .step(({ variables: { stepType, expression }, when: { catalog } }) => {
+    const entry = catalog.steps.find(s => s.expression === expression);
+    expect(entry).not.toBeNullish();
+    expect(entry?.stepType).toEqual(stepType);
+    expect(entry?.id).toEqual(`${entry?.sourceFile}:${entry?.line}`);
+  });
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({ expression: stringParser, key: stringParser })
+  .statement(v => `the catalog step ${v.expression} produces ${v.key}`)
+  .dependencies({ when: { catalog: "required" } })
+  .step(({ variables: { expression, key }, when: { catalog } }) => {
+    const entry = catalog.steps.find(s => s.expression === expression);
+    expect(entry).not.toBeNullish();
+    expect(entry?.produces ?? []).toInclude(key);
+  });
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({
+    expression: stringParser,
+    key: stringParser,
+    phase: stringParser,
+  })
+  .statement(
+    v =>
+      `the catalog step ${v.expression} requires ${v.key} from ${v.phase} state`
+  )
+  .dependencies({ when: { catalog: "required" } })
+  .step(({ variables: { expression, key, phase }, when: { catalog } }) => {
+    const entry = catalog.steps.find(s => s.expression === expression);
+    expect(entry).not.toBeNullish();
+    const deps = entry?.dependencies[phase as "given" | "when" | "then"];
+    expect(deps?.[key]).toEqual("required");
+  });
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({ key: stringParser, count: intParser })
+  .statement(
+    v =>
+      `filtering the catalog by consumed key ${v.key} yields ${v.count} step/steps`
+  )
+  .dependencies({ when: { catalog: "required" } })
+  .step(({ variables: { key, count }, when: { catalog } }) => {
+    const matches = filterCatalog(catalog.steps, { consumes: { key } });
+    expect(matches).toHaveLength(count);
+  });
+
+thenBuilder<AnalyzerGivenState, AnalyzerWhenState, AnalyzerThenState>()
+  .variables({ key: stringParser, count: intParser })
+  .statement(
+    v =>
+      `filtering the catalog by produced key ${v.key} yields ${v.count} step/steps`
+  )
+  .dependencies({ when: { catalog: "required" } })
+  .step(({ variables: { key, count }, when: { catalog } }) => {
+    const matches = filterCatalog(catalog.steps, { produces: key });
+    expect(matches).toHaveLength(count);
   });

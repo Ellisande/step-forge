@@ -41,6 +41,13 @@ describe("extractStepDefinitions", () => {
     expect(deposit?.dependencies.given).toEqual({ user: "required" });
   });
 
+  it("infers produced keys from the step function's return value", () => {
+    const save = definitions.find(d => d.expression === "I save the user");
+    expect(save?.produces).toEqual(["user"]);
+    const noop = definitions.find(d => d.expression === "everything was good");
+    expect(noop?.produces).toEqual([]);
+  });
+
   it("extracts a custom parser's regex pattern for the matcher", () => {
     const color = definitions.find(
       d => d.expression === "my favorite color is {color}"

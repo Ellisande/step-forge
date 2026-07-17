@@ -17,6 +17,8 @@ import {
   matchScenarioSteps,
   findMatchingDefinitions,
   defaultRules,
+  buildCatalog,
+  filterCatalog,
 } from "./analyzer/index";
 import type {
   AnalyzerConfig,
@@ -27,6 +29,12 @@ import type {
   ParsedScenario,
   ParsedStep,
   MatchedStep,
+  CatalogConfig,
+  CatalogEntry,
+  StepCatalog,
+  CatalogQuery,
+  ConsumesQuery,
+  Phase,
 } from "./analyzer/index";
 import { createBuilders } from "./init";
 import {
@@ -82,6 +90,8 @@ export const analyzer = {
   matchScenarioSteps,
   findMatchingDefinitions,
   defaultRules,
+  buildCatalog,
+  filterCatalog,
 };
 
 export type {
@@ -93,4 +103,10 @@ export type {
   ParsedScenario,
   ParsedStep,
   MatchedStep,
+  CatalogConfig,
+  CatalogEntry,
+  StepCatalog,
+  CatalogQuery,
+  ConsumesQuery,
+  Phase,
 };

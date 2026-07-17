@@ -3,6 +3,7 @@ import { extractStepDefinitions } from "./stepExtractor.js";
 import { parseFeatureFiles, parseFeatureContent } from "./gherkinParser.js";
 import { matchScenarioSteps, findMatchingDefinitions } from "./stepMatcher.js";
 import { defaultRules, runRules } from "./rules/index.js";
+import { buildCatalog, filterCatalog } from "./catalog.js";
 import type {
   AnalyzerConfig,
   AnalysisRule,
@@ -30,7 +31,18 @@ export {
   matchScenarioSteps,
   findMatchingDefinitions,
   defaultRules,
+  buildCatalog,
+  filterCatalog,
 };
+
+export type {
+  CatalogConfig,
+  CatalogEntry,
+  StepCatalog,
+  CatalogQuery,
+  ConsumesQuery,
+  Phase,
+} from "./catalog.js";
 
 export interface AnalyzeOptions {
   rules?: AnalysisRule[];

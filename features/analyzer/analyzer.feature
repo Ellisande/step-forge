@@ -95,6 +95,26 @@ Feature: Analyzer dependency verification
     And an error should mention "given.user"
     And an error should mention "given.account"
 
+  # --- Catalog scenarios ---
+
+  Scenario: The catalog lists implemented steps with their metadata
+    When I build the step catalog
+    Then the catalog contains a "when" step "I deposit {int} {string}"
+    And the catalog step "I deposit {int} {string}" produces "result"
+    And the catalog step "I deposit {int} {string}" requires "user" from "given" state
+    And the catalog contains a "given" step "my favorite color is {color}"
+    And the catalog step "my favorite color is {color}" produces "favoriteColor"
+
+  Scenario: The catalog can be filtered by consumed state
+    When I build the step catalog
+    Then filtering the catalog by consumed key "user" yields 4 steps
+    And filtering the catalog by consumed key "nonexistent" yields 0 steps
+
+  Scenario: The catalog can be filtered by produced state
+    When I build the step catalog
+    Then filtering the catalog by produced key "user" yields 3 steps
+    And filtering the catalog by produced key "result" yields 2 steps
+
   # --- Diagnostic range scenarios ---
 
   Scenario: Undefined step diagnostic range covers only the step text

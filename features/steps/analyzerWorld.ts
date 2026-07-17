@@ -1,4 +1,4 @@
-import { Diagnostic } from "../../src/analyzer/index";
+import { Diagnostic, StepCatalog } from "../../src/analyzer/index";
 
 /**
  * World-state contract for the analyzer self-tests. State flows through the
@@ -13,6 +13,7 @@ export interface AnalyzerGivenState {
 
 export interface AnalyzerWhenState {
   diagnostics: Diagnostic[];
+  catalog: StepCatalog;
 }
 
 export type AnalyzerThenState = Record<string, never>;

@@ -46,6 +46,7 @@
     "test:unit": "bun test src",
     "test:features": "bun src/runtime/cli.ts",
     "test:ci": "bun run test",
+    "catalog": "bun src/analyzer/cli.ts catalog",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"
   },
