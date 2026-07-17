@@ -216,8 +216,6 @@ Even though we have complex dependencies across multiple parts of state, Step Fo
 
 ### Simpler Step Definitions
 
-> Note: Defining steps this way currently doesn't work with the vs code extension. We're working to improve this.
-
 Some people find the builder syntax to be a bit verbose, having to provide the generics for `GivenState`, `WhenState`, and `ThenState`. If you prefer a simpler syntax you can export your own definitions that have some of it built in.
 
 ```ts

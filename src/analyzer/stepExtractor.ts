@@ -748,64 +748,137 @@ interface ReExportResult {
   expression: string | null;
 }
 
+/** The property names `createBuilders()` returns, mapped to their step phase. */
+const CREATE_BUILDERS_PROPS: Record<string, StepType> = {
+  Given: "given",
+  When: "when",
+  Then: "then",
+};
+
+/** The identifier that anchors a re-exported builder chain, e.g. `Given` in
+ *  `Given("x")`, `Given.statement("x")`, or `Given.variables({...})`. */
+function chainOriginIdentifier(expr: ts.Expression): ts.Identifier | null {
+  if (ts.isIdentifier(expr)) return expr;
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+    return expr.expression;
+  }
+  return null;
+}
+
+/** True when `expr` is a call to the library's `createBuilders(...)` helper
+ *  (generic type arguments are part of the CallExpression, so `<...>()` fits). */
+function isCreateBuildersCall(expr: ts.Expression): boolean {
+  return (
+    ts.isCallExpression(expr) &&
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "createBuilders"
+  );
+}
+
+/** The step phase and shape a re-exported builder identifier resolves to. */
+interface BoundBuilderInfo {
+  stepType: StepType;
+  /** `true` when the identifier is a bound `.statement` (`Given("x")`), so the
+   *  chain's outermost call *is* the statement call. `false` when it is a
+   *  builder object (`Given.statement(...)` / `Given.variables(...)`), whose
+   *  statement/variables links the main walk already collected. */
+  boundStatement: boolean;
+}
+
+/** Inspect the declaration a re-exported builder identifier resolves to and
+ *  recover its step phase, covering the documented pre-bound styles:
+ *   - `const Given = givenBuilder<T>().statement`  (bound statement)
+ *   - `const Given = givenBuilder<T>()`            (builder object)
+ *   - `const { Given } = createBuilders<...>()`    (destructured builder object) */
+function analyzeBoundBuilderDecl(
+  decl: ts.Declaration
+): BoundBuilderInfo | null {
+  if (ts.isVariableDeclaration(decl) && decl.initializer) {
+    const init = decl.initializer;
+    // givenBuilder<T>().statement — a bound statement function.
+    if (
+      ts.isPropertyAccessExpression(init) &&
+      init.name.text === "statement" &&
+      ts.isCallExpression(init.expression)
+    ) {
+      const stepType = builderCallStepType(init.expression);
+      if (stepType) return { stepType, boundStatement: true };
+    }
+    // givenBuilder<T>() — a builder object, used as `Given.statement(...)`.
+    if (ts.isCallExpression(init)) {
+      const stepType = builderCallStepType(init);
+      if (stepType) return { stepType, boundStatement: false };
+    }
+  }
+  // const { Given, When, Then } = createBuilders<...>() — builder objects.
+  if (ts.isBindingElement(decl)) {
+    const pattern = decl.parent;
+    if (ts.isObjectBindingPattern(pattern)) {
+      const varDecl = pattern.parent;
+      if (
+        ts.isVariableDeclaration(varDecl) &&
+        varDecl.initializer &&
+        isCreateBuildersCall(varDecl.initializer)
+      ) {
+        // `propertyName` is set only when renamed (`{ Given: G }`); either way
+        // the source property (Given/When/Then) drives the phase.
+        const prop = decl.propertyName ?? decl.name;
+        if (ts.isIdentifier(prop)) {
+          const stepType = CREATE_BUILDERS_PROPS[prop.text];
+          if (stepType) return { stepType, boundStatement: false };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** StepType of a `givenBuilder()`/`whenBuilder()`/`thenBuilder()` call. */
+function builderCallStepType(call: ts.CallExpression): StepType | null {
+  const callee = call.expression;
+  return ts.isIdentifier(callee) ? (BUILDER_NAMES[callee.text] ?? null) : null;
+}
+
 function resolveReExportedCall(
   chain: ts.CallExpression[],
   ctx: ExtractCtx
 ): ReExportResult | null {
-  // Look for the pattern: Variable("...")... where Variable was assigned from builderType().statement
-  // The last call in the chain (furthest from register) should be the variable call
-
+  // The outermost call in the chain anchors on the re-exported identifier,
+  // e.g. `Given(...)` (bound statement) or `Given.statement(...)` (builder obj).
   const lastCall = chain[chain.length - 1];
   if (!lastCall) return null;
 
-  const expr = lastCall.expression;
-
-  // If it's an identifier (like "Given", "When", "Then"), trace its declaration
-  let identifier: ts.Identifier | null = null;
-  if (ts.isIdentifier(expr)) {
-    identifier = expr;
-  } else if (
-    ts.isPropertyAccessExpression(expr) &&
-    ts.isIdentifier(expr.expression)
-  ) {
-    identifier = expr.expression;
-  }
-
+  const identifier = chainOriginIdentifier(lastCall.expression);
   if (!identifier) return null;
 
-  // Tracing the re-exported builder's declaration needs symbol resolution,
-  // which only a real Program provides. Flag for the checked retry.
+  // Tracing the identifier's declaration — and following it across the module
+  // boundary when it is imported — needs symbol resolution, which only a real
+  // Program provides. Flag for the checked retry on the parse-only fast path.
   if (!ctx.checker) {
     ctx.needsChecker = true;
     return null;
   }
 
-  const symbol = ctx.checker.getSymbolAtLocation(identifier);
-  if (!symbol) return null;
-
-  const decl = symbol.valueDeclaration;
-  if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer)
-    return null;
-
-  // Check if initializer is builderType<T>().statement
-  const init = decl.initializer;
-
-  // Pattern: givenBuilder<T>().statement  (PropertyAccessExpression)
-  if (ts.isPropertyAccessExpression(init) && init.name.text === "statement") {
-    const callExpr = init.expression;
-    if (ts.isCallExpression(callExpr)) {
-      const callee = callExpr.expression;
-      if (ts.isIdentifier(callee) && BUILDER_NAMES[callee.text]) {
-        // The lastCall IS the statement call — extract expression from it.
-        // Re-exported statements are plain strings, so no variables map.
-        const expression = extractExpression(lastCall, new Map());
-        return {
-          stepType: BUILDER_NAMES[callee.text],
-          expression,
-        };
-      }
-    }
+  // Follow import aliases so a builder defined in one module and imported into
+  // the step file (the documented "Simpler Step Definitions" pattern) resolves
+  // to its real declaration, not the local ImportSpecifier.
+  let symbol = ctx.checker.getSymbolAtLocation(identifier);
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+    symbol = ctx.checker.getAliasedSymbol(symbol);
   }
+  const decl = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+  if (!decl) return null;
 
-  return null;
+  const info = analyzeBoundBuilderDecl(decl);
+  if (!info) return null;
+
+  // For a bound `.statement`, the outermost call carries the statement text
+  // (a plain string — the bound form has no variables). For a builder object,
+  // the main walk already found the `.statement`/`.variables` links and will
+  // compute the expression itself, so only the step phase is missing here.
+  const expression = info.boundStatement
+    ? extractExpression(lastCall, new Map())
+    : null;
+
+  return { stepType: info.stepType, expression };
 }

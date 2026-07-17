@@ -8,6 +8,10 @@ const fixtureStepFile = path.resolve(
   __dirname,
   "../../features/analyzer/fixtures/steps.ts"
 );
+const preboundStepFile = path.resolve(
+  __dirname,
+  "../../features/analyzer/fixtures/prebound-steps.ts"
+);
 
 describe("extractStepDefinitions", () => {
   const definitions = extractStepDefinitions([fixtureStepFile]);
@@ -60,5 +64,32 @@ describe("extractStepDefinitions", () => {
       d => d.expression === "I deposit {int} {string}"
     );
     expect(deposit?.parameters).toBeUndefined();
+  });
+});
+
+describe("extractStepDefinitions (pre-bound builder styles)", () => {
+  const definitions = extractStepDefinitions([preboundStepFile]);
+  const byExpression = (expression: string) =>
+    definitions.find(d => d.expression === expression);
+
+  it("extracts cross-file re-exported `.statement` steps (Simpler Step Definitions)", () => {
+    // The builder is imported from prebound-builders.ts; extraction must follow
+    // the import alias to recover the step phase, not stop at the ImportSpecifier.
+    expect(byExpression("a prebound customer")?.stepType).toBe("given");
+    expect(byExpression("the prebound order exists")?.stepType).toBe("then");
+  });
+
+  it("keeps dependencies and produced keys through the re-exported chain", () => {
+    const order = byExpression("I place a prebound order");
+    expect(order?.stepType).toBe("when");
+    expect(order?.dependencies.given).toEqual({ user: "required" });
+    expect(order?.produces).toEqual(["order"]);
+  });
+
+  it("extracts destructured createBuilders() steps with variables", () => {
+    const act = byExpression("I deposit {int} prebound");
+    expect(act?.stepType).toBe("when");
+    expect(act?.dependencies.given).toEqual({ user: "required" });
+    expect(act?.produces).toEqual(["order"]);
   });
 });

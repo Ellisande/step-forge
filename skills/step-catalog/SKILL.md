@@ -27,14 +27,14 @@ isn't linked — run the CLI entry directly: `bun src/analyzer/cli.ts catalog`.
 
 Filters — combine freely, they AND together:
 
-| Flag | Meaning |
-| --- | --- |
-| `--type given\|when\|then` | step phase |
-| `--text <substring>` | case-insensitive match on the expression |
-| `--consumes <spec>` | consumed state: `user` (any phase), `given.user`, `given.user:required` |
-| `--produces <key>` | produced state key (exact match) |
-| `--source <substring>` | source file path |
-| `--json` | machine-readable envelope `{ version, steps }` |
+| Flag                       | Meaning                                                                 |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `--type given\|when\|then` | step phase                                                              |
+| `--text <substring>`       | case-insensitive match on the expression                                |
+| `--consumes <spec>`        | consumed state: `user` (any phase), `given.user`, `given.user:required` |
+| `--produces <key>`         | produced state key (exact match)                                        |
+| `--source <substring>`     | source file path                                                        |
+| `--json`                   | machine-readable envelope `{ version, steps }`                          |
 
 The human-readable default is easiest to scan; add `--json` when you need exact dependency
 maps or source locations to cite.
@@ -75,7 +75,7 @@ maps or source locations to cite.
 
 **Fixing a missing-dependency error** — e.g. the analyzer reports `when.deposit is
 required` but nothing produces it: run `--produces deposit --type when`, pick a producing
-step, and insert it before the failing step (then satisfy *its* dependencies the same way).
+step, and insert it before the failing step (then satisfy _its_ dependencies the same way).
 
 **Answering "what steps are available"** — run with no filters, group by `stepType`, and
 cite `sourceFile:line` from `--json` output so readers can jump to each definition.
