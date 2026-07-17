@@ -74,9 +74,12 @@ export async function analyze(
   // 3. Parse feature files
   const scenarios = parseFeatureFiles(featureFilePaths);
 
-  // 4. For each scenario, match steps and run rules
+  // 4. For each scenario, match steps and run rules. `@skip`-tagged scenarios
+  // are excluded to mirror the runner: they never execute, so a deliberately
+  // broken skipped scenario should not fail static analysis either.
   const diagnostics: Diagnostic[] = [];
   for (const scenario of scenarios) {
+    if (scenario.tags.includes("@skip")) continue;
     const matchedSteps = matchScenarioSteps(scenario, stepDefinitions);
     const scenarioDiags = runRules(rules, scenario, matchedSteps);
     diagnostics.push(...scenarioDiags);

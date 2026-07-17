@@ -62,6 +62,13 @@ Feature: Analyzer dependency verification
     And an error should mention "my favorite color is purple"
     And an error should mention "I deposit ten"
 
+  # --- Tag handling scenarios ---
+
+  Scenario: Skipped scenarios are not analyzed
+    Given a feature file "skip-tag.feature"
+    When I analyze the files
+    Then there should be no errors
+
   # --- Ambiguous step scenarios ---
 
   Scenario: Ambiguous step reports an error

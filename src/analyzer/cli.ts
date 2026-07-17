@@ -41,10 +41,16 @@ function printUsage() {
        step-forge-analyze catalog [options]
 
 Options:
-  -s, --steps <glob>      Glob pattern for step definition files (repeatable)
-  -f, --features <glob>   Glob pattern for feature files (repeatable)
+  -s, --steps <glob>      Glob pattern for step definition files (repeatable).
+                          Overrides the "steps" globs from step-forge.config.ts.
+  -f, --features <glob>   Glob pattern for feature files (repeatable).
+                          Overrides the "features" globs from step-forge.config.ts.
   --tsconfig <path>       Path to tsconfig.json (default: auto-detect)
   -h, --help              Show this help message
+
+When a flag is omitted, the corresponding globs are read from
+step-forge.config.ts in the current directory (falling back to the runner
+defaults "**/*.steps.ts" / "**/*.feature").
 
 The "catalog" subcommand lists implemented step definitions instead of
 analyzing features; run "step-forge-analyze catalog --help" for its options.
@@ -52,6 +58,20 @@ analyzing features; run "step-forge-analyze catalog --help" for its options.
 Example:
   step-forge-analyze --steps "features/steps/**/*.ts" --features "features/**/*.feature"
 `);
+}
+
+/**
+ * Resolve step/feature globs with the same precedence as the runner:
+ * CLI flags win; otherwise the globs come from step-forge.config.ts in the
+ * current directory, then the runner defaults.
+ */
+async function resolveGlobs(cli: { steps?: string[]; features?: string[] }) {
+  const cwd = process.cwd();
+  const resolved = resolveConfig(cwd, await loadConfigFile(cwd), {
+    steps: cli.steps?.length ? cli.steps : undefined,
+    features: cli.features?.length ? cli.features : undefined,
+  });
+  return { steps: resolved.steps, features: resolved.features };
 }
 
 function printCatalogUsage() {
@@ -210,11 +230,9 @@ async function runCatalog(args: string[]) {
     process.exit(1);
   }
 
-  let stepFiles = options.stepFiles;
-  if (stepFiles.length === 0) {
-    const cwd = process.cwd();
-    stepFiles = resolveConfig(cwd, await loadConfigFile(cwd), {}).steps;
-  }
+  const { steps: stepFiles } = await resolveGlobs({
+    steps: options.stepFiles,
+  });
 
   const stepFilePaths = await globFiles(stepFiles);
   if (stepFilePaths.length === 0) {
@@ -253,14 +271,31 @@ async function main() {
   }
 
   const config = parseArgs(args);
+  const globs = await resolveGlobs({
+    steps: config.stepFiles,
+    features: config.featureFiles,
+  });
 
-  if (config.stepFiles.length === 0 || config.featureFiles.length === 0) {
-    console.error("Error: Both --steps and --features are required.\n");
-    printUsage();
+  const stepFilePaths = await globFiles(globs.steps);
+  if (stepFilePaths.length === 0) {
+    console.error(
+      `Error: no step files matched ${globs.steps.map(g => `"${g}"`).join(", ")}.`
+    );
+    process.exit(1);
+  }
+  const featureFilePaths = await globFiles(globs.features);
+  if (featureFilePaths.length === 0) {
+    console.error(
+      `Error: no feature files matched ${globs.features.map(g => `"${g}"`).join(", ")}.`
+    );
     process.exit(1);
   }
 
-  const diagnostics = await analyze(config);
+  const diagnostics = await analyze({
+    stepFiles: stepFilePaths,
+    featureFiles: featureFilePaths,
+    tsConfigPath: config.tsConfigPath,
+  });
 
   if (diagnostics.length === 0) {
     console.log("No issues found.");
