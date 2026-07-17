@@ -1,4 +1,5 @@
 import { whenBuilder } from "../src/when";
+import { intParser, stringParser } from "../src/parsers";
 import { SampleGivenState, SampleWhenState } from "./testUtils";
 
 // Simplest possible example
@@ -47,10 +48,11 @@ whenBuilder<SampleGivenState, SampleWhenState>()
     };
   });
 
-// Simple variables example
+// Variables example
 whenBuilder<SampleGivenState, SampleWhenState>()
-  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
-  .step(({ variables: [v1, v2] }) => {
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `When a user does ${v.v1} ${v.v2} times`)
+  .step(({ variables: { v1, v2 } }) => {
     return {
       e: `Action ${v1} ${v2}`,
     };
@@ -58,7 +60,8 @@ whenBuilder<SampleGivenState, SampleWhenState>()
 
 // Complex example with both dependencies
 whenBuilder<SampleGivenState, SampleWhenState>()
-  .statement((v1: string, v2: number) => `When a user does ${v1} ${v2} times`)
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `When a user does ${v.v1} ${v.v2} times`)
   .dependencies({
     given: {
       a: "required",
@@ -69,13 +72,24 @@ whenBuilder<SampleGivenState, SampleWhenState>()
       e: "optional",
     },
   })
-  .step(({ variables: [v1, v2], given: { a, b }, when: { d, e } }) => {
+  .step(({ variables: { v1, v2 }, given: { a, b }, when: { d, e } }) => {
     return {
       e: `Action ${v1} ${v2} with ${a} ${b} ${d} ${e}`,
     };
   });
 
+// A string statement keeps its exact literal type on `expression`
+const stringMeta = whenBuilder<SampleGivenState, SampleWhenState>()
+  .statement("When a user does something")
+  .step(() => ({ e: "action" }));
+export const exactExpression: "When a user does something" =
+  stringMeta.expression;
+
 // ----- Should not compile section ----
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  // @ts-expect-error - function statements are gone; declare variables with .variables()
+  .statement((v1: string) => `When a user does ${v1}`);
 
 // @ts-expect-error - Should not compile without a statement
 whenBuilder<SampleGivenState, SampleWhenState>().step(() => {
@@ -83,15 +97,6 @@ whenBuilder<SampleGivenState, SampleWhenState>().step(() => {
     a: "action",
   };
 });
-
-whenBuilder<SampleGivenState, SampleWhenState>()
-  .statement(() => "When a user does something")
-  // @ts-expect-error - Should not compile since no variables are declared
-  .step(({ variables: [v1, v2] }) => {
-    return {
-      a: `Action ${v1} ${v2}`,
-    };
-  });
 
 whenBuilder<SampleGivenState, SampleWhenState>()
   .statement("When a user does something")
@@ -103,14 +108,22 @@ whenBuilder<SampleGivenState, SampleWhenState>()
   });
 
 whenBuilder<SampleGivenState, SampleWhenState>()
-  .statement(
-    (v1: string, v2: number, v3: boolean) =>
-      `When a user does ${v1} ${v2} ${v3}`
-  )
-  // @ts-expect-error - Should not compile since the number of variables exceeds the number declared
-  .step(({ variables: [v1, v2, v3, v4] }) => {
+  .variables({ v1: stringParser })
+  // @ts-expect-error - the statement can only interpolate declared variable names
+  .statement(v => `When a user does ${v.nope}`)
+  .step(({ variables: { v1 } }) => {
     return {
-      a: `Action ${v1} ${v2} ${v3} ${v4}`,
+      e: `Action ${v1}`,
+    };
+  });
+
+whenBuilder<SampleGivenState, SampleWhenState>()
+  .variables({ v1: stringParser })
+  .statement(v => `When a user does ${v.v1}`)
+  // @ts-expect-error - only declared variable names exist on `variables`
+  .step(({ variables: { v2 } }) => {
+    return {
+      e: `Action ${v2}`,
     };
   });
 
@@ -149,7 +162,7 @@ whenBuilder<SampleGivenState, SampleWhenState>()
   .statement("When a user does something")
   .dependencies({ when: { e: "optional" } })
   .step(({ when }) => {
-    // @ts-expect-error - Should not compile since a is optional and can be undefined
+    // @ts-expect-error - Should not compile since e is optional and can be undefined
     const strictE: string = when.e;
     return {
       f: [strictE.length],

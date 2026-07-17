@@ -2,14 +2,17 @@
 
 import {
   FullDependencies,
-  GetFunctionArgs,
-  isString,
   RequiredOrOptional,
   Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser } from "./parsers";
+import {
+  NoVariables,
+  VariableMap,
+  VariablesOf,
+  VariableTokens,
+} from "./variables";
 
 const WHEN: StepType = "when";
 
@@ -23,10 +26,11 @@ type WhenInput<Variables, Given, When> = {
 };
 type WhenOutput<WhenState> = Partial<WhenState> | Promise<Partial<WhenState>>;
 
+// Shared dependencies stage for both entry styles; see given.ts for the shape.
 const whenDependencies =
-  <Variables, GivenState, WhenState>(
-    statement: (...args: any[]) => string,
-    parsers?: Parser<any>[]
+  <Variables, Expr extends string, GivenState, WhenState>(
+    statement: (tokens: any) => string,
+    variables: VariableMap
   ) =>
   <
     GivenDeps extends RequiredOrOptional<GivenState>,
@@ -41,7 +45,8 @@ const whenDependencies =
         Restrict<GivenState, GivenDeps>,
         Restrict<WhenState, WhenDeps>
       >,
-      WhenOutput<WhenState>
+      WhenOutput<WhenState>,
+      Expr
     >(
       statement,
       WHEN,
@@ -50,53 +55,52 @@ const whenDependencies =
         when: dependencies.when ?? {},
         then: {},
       } as FullDependencies,
-      parsers
+      variables
     ),
   });
 
-const whenParsers =
-  <Variables extends any[], GivenState, WhenState>(
-    statement: (...args: any[]) => string
-  ) =>
-  <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
-    parsers: Parsers
-  ) => ({
-    dependencies: whenDependencies<Variables, GivenState, WhenState>(
-      statement,
-      parsers as unknown as Parser<any>[]
-    ),
-    step: addStep<WhenInput<Variables, never, never>, WhenOutput<WhenState>>(
-      statement,
-      WHEN,
-      undefined,
-      parsers as unknown as Parser<any>[]
-    ),
+// The variable chain: `.variables({name: parser}).statement(v => ...)`; see
+// given.ts for the pattern.
+const whenVariables =
+  <GivenState, WhenState>() =>
+  <Map extends VariableMap>(variables: Map) => ({
+    statement: <Expr extends string>(
+      statement: (tokens: VariableTokens<Map>) => Expr
+    ) => ({
+      dependencies: whenDependencies<
+        VariablesOf<Map>,
+        Expr,
+        GivenState,
+        WhenState
+      >(statement, variables),
+      step: addStep<
+        WhenInput<VariablesOf<Map>, never, never>,
+        WhenOutput<WhenState>,
+        Expr
+      >(statement, WHEN, undefined, variables),
+    }),
   });
 
+// A statement with no variables is a plain string; `Expr` keeps its exact
+// literal type on the registered step's `expression`.
 const whenStatement =
   <GivenState, WhenState>() =>
-  <Statement extends ((...args: [...any]) => string) | string>(
-    statement: Statement
-  ) => {
-    const normalizedStatement: (...args: any[]) => string = isString(statement)
-      ? () => statement
-      : (statement as (...args: any[]) => string);
-
-    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
+  <Expr extends string>(statement: Expr) => {
+    const statementFn = () => statement;
     return {
-      dependencies: whenDependencies<Variables, GivenState, WhenState>(
-        normalizedStatement
+      dependencies: whenDependencies<NoVariables, Expr, GivenState, WhenState>(
+        statementFn,
+        {}
       ),
-      parsers: whenParsers<Variables, GivenState, WhenState>(
-        normalizedStatement
-      ),
-      step: addStep<WhenInput<Variables, never, never>, WhenOutput<WhenState>>(
-        normalizedStatement,
-        WHEN
-      ),
+      step: addStep<
+        WhenInput<NoVariables, never, never>,
+        WhenOutput<WhenState>,
+        Expr
+      >(statementFn, WHEN, undefined, {}),
     };
   };
 
 export const whenBuilder = <GivenState, WhenState>() => ({
   statement: whenStatement<GivenState, WhenState>(),
+  variables: whenVariables<GivenState, WhenState>(),
 });

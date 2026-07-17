@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DepMap, FullDependencies, StepType } from "./builderTypeUtils";
-import { Parser, stringParser } from "./parsers";
+import { Parser } from "./parsers";
 import { globalRegistry } from "./runtime/registry";
 import { captureDefinitionSite } from "./sourceLocation";
+import { renderNamedExpression, VariableMap } from "./variables";
 import { MergeableWorld } from "./world";
 
 /**
@@ -47,41 +48,55 @@ const requiredKeysOf = (deps: DepMap): string[] =>
   Object.keys(deps).filter(key => deps[key] === "required");
 
 /**
- * The runtime core of the builder chain. `addStep` is deliberately phase-agnostic:
- * the calling builder (given/when/then) has already computed the exact type of the
- * step function via its two type parameters:
+ * Everything the registration core needs beyond the step function itself.
+ * Built by `addStep`; `registerStep` is the shared registration tail.
+ */
+type StepRuntimeConfig = {
+  statement: (...args: any[]) => string;
+  /** The finished cucumber expression, placeholders already rendered. */
+  expression: string;
+  /** Parsers in capture-group order — exactly what the engine registers. */
+  parsers: Parser<any>[];
+  /**
+   * Shape the matcher's positional captures into the name-keyed `variables`
+   * object the step function sees.
+   */
+  toVariables: (capturedArgs: unknown[]) => unknown;
+  stepType: StepType;
+  dependencies: FullDependencies;
+};
+
+/**
+ * The runtime core of the builder chain, phase-agnostic: the calling builder
+ * has already computed the exact type of the step function via the type
+ * parameters:
  *
  * - `StepFnInput`  — the `{ variables, given, when, then }` object the step receives,
  *   with each phase already narrowed to its declared dependencies.
  * - `StepFnOutput` — the phase-appropriate return type (`Partial<State>`, or `void`).
+ * - `Expr`         — the statement's compile-time text: the exact literal for a
+ *   string statement, a `${string}`-holed template type for a token statement.
+ *   The returned metadata's `expression` carries it.
  *
- * Everything else is plain runtime data (a statement function, the step type, the
- * dependency map, the parsers), so `addStep` carries no generics for them.
+ * Everything else is plain runtime data carried in the config, so `registerStep`
+ * carries no generics for it.
  */
-export const addStep =
-  <StepFnInput, StepFnOutput>(
-    statement: (...args: any[]) => string,
-    stepType: StepType,
-    dependencies: FullDependencies = {
-      given: {},
-      when: {},
-      then: {},
-    },
-    declaredParsers?: Parser<any>[]
-  ) =>
+const registerStep =
+  <StepFnInput, StepFnOutput, Expr extends string>(config: StepRuntimeConfig) =>
   (stepFunction: (input: StepFnInput) => StepFnOutput) => {
+    const {
+      statement,
+      expression,
+      parsers,
+      toVariables,
+      stepType,
+      dependencies,
+    } = config;
     const {
       given: givenDependencies,
       when: whenDependencies,
       then: thenDependencies,
     } = dependencies;
-    // Resolve the parsers up front, defaulting every variable to `stringParser`
-    // (the `{string}` placeholder, value passed through unchanged) when none are
-    // provided. Numeric/boolean values are opt-in via explicit parsers.
-    const argCount = statement.length;
-    const parsers =
-      declaredParsers ?? Array.from({ length: argCount }, () => stringParser);
-    const expression = statement(...parsers.map(parser => `{${parser.name}}`));
     // Dependency key lists are fixed once the step is registered, so compute
     // them here (once) rather than on every execution. `*AllKeys` is every
     // declared dependency (required + optional), `*RequiredKeys` the subset that
@@ -103,7 +118,7 @@ export const addStep =
       capturedArgs: unknown[]
     ) => {
       const result = await stepFunction({
-        variables: capturedArgs,
+        variables: toVariables(capturedArgs),
         given: narrowPhase(world, "given", givenAllKeys, givenRequiredKeys),
         when: narrowPhase(world, "when", whenAllKeys, whenRequiredKeys),
         then: narrowPhase(world, "then", thenAllKeys, thenRequiredKeys),
@@ -124,9 +139,44 @@ export const addStep =
 
     return {
       statement,
-      expression,
+      expression: expression as Expr,
       dependencies,
       stepType,
       stepFunction,
     };
   };
+
+/**
+ * Registration for the builder chain: the `.variables()` map declares
+ * name → parser, the statement interpolates opaque tokens (a string statement
+ * is normalized by the builder to `() => statement` with an empty map), and
+ * the step function receives `variables` as a name-keyed object. The token
+ * dance in `renderNamedExpression` recovers the interpolation order, which is
+ * the bridge between the matcher's positional captures and the named object.
+ */
+export const addStep = <StepFnInput, StepFnOutput, Expr extends string>(
+  statement: (tokens: any) => string,
+  stepType: StepType,
+  dependencies: FullDependencies = {
+    given: {},
+    when: {},
+    then: {},
+  },
+  variables: VariableMap = {}
+) => {
+  const { expression, order } = renderNamedExpression(statement, variables);
+  return registerStep<StepFnInput, StepFnOutput, Expr>({
+    statement,
+    expression,
+    parsers: order.map(name => variables[name]),
+    toVariables: capturedArgs => {
+      const named: Record<string, unknown> = {};
+      for (let i = 0; i < order.length; i++) {
+        named[order[i]] = capturedArgs[i];
+      }
+      return named;
+    },
+    stepType,
+    dependencies,
+  });
+};

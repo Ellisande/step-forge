@@ -34,18 +34,23 @@ givenBuilder<SampleGivenState>()
     };
   });
 
-// Simple variables example
+// Variables example - variables arrive as a name-keyed object typed by each
+// parser's return type
 givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
-  .step(({ variables: [v1, v2] }) => {
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `Given a user ${v.v1} ${v.v2}`)
+  .step(({ variables: { v1, v2 } }) => {
+    const name: string = v1;
+    const amount: number = v2;
     return {
-      b: `I love ${v1} ${v2}`,
+      b: `I love ${name} ${amount}`,
     };
   });
 
-// Complex example
+// Complex example - variables chain into dependencies
 givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
+  .variables({ v1: stringParser, v2: intParser })
+  .statement(v => `Given a user ${v.v1} ${v.v2}`)
   .dependencies({
     given: {
       a: "required",
@@ -53,55 +58,31 @@ givenBuilder<SampleGivenState>()
       c: "required",
     },
   })
-  .step(({ variables: [v1, v2], given: { a, b, c } }) => {
+  .step(({ variables: { v1, v2 }, given: { a, b, c } }) => {
     return {
       b: `I love ${v1} ${v2} ${a} ${b} ${c}`,
     };
   });
 
-// Parsers example - variables keep their declared types and parsers must match
-givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
-  .parsers([stringParser, intParser])
-  .step(({ variables: [v1, v2] }) => {
-    const amount: number = v2;
-    return {
-      b: `I love ${v1} ${amount}`,
-    };
-  });
+// A string statement keeps its exact literal type on `expression`
+const stringMeta = givenBuilder<SampleGivenState>()
+  .statement("Given a user")
+  .step(() => ({ a: "user" }));
+export const exactExpression: "Given a user" = stringMeta.expression;
 
-// Parsers can chain into dependencies
-givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
-  .parsers([stringParser, intParser])
-  .dependencies({ given: { a: "required" } })
-  .step(({ variables: [v1, v2], given: { a } }) => {
-    return {
-      b: `I love ${v1} ${v2} ${a}`,
-    };
-  });
+// A token statement keeps a `${string}`-holed template type on `expression`
+const namedMeta = givenBuilder<SampleGivenState>()
+  .variables({ v1: stringParser })
+  .statement(v => `Given a user ${v.v1}`)
+  .step(({ variables: { v1 } }) => ({ b: v1 }));
+export const templateExpression: `Given a user ${string}` =
+  namedMeta.expression;
 
 // ----- Should not compile section ----
 
 givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
-  // @ts-expect-error - intParser produces number but v1 is declared as a string
-  .parsers([intParser, intParser])
-  .step(({ variables: [v1, v2] }) => {
-    return {
-      b: `I love ${v1} ${v2}`,
-    };
-  });
-
-givenBuilder<SampleGivenState>()
-  .statement((v1: string, v2: number) => `Given a user ${v1} ${v2}`)
-  // @ts-expect-error - too few parsers for the declared variables
-  .parsers([stringParser])
-  .step(({ variables: [v1, v2] }) => {
-    return {
-      b: `I love ${v1} ${v2}`,
-    };
-  });
+  // @ts-expect-error - function statements are gone; declare variables with .variables()
+  .statement((v1: string) => `Given a user ${v1}`);
 
 // @ts-expect-error - Should not compile without a statement
 givenBuilder<SampleGivenState>().step(() => {
@@ -110,16 +91,6 @@ givenBuilder<SampleGivenState>().step(() => {
   };
 });
 
-givenBuilder<SampleGivenState>()
-  .statement(() => "Given a user")
-  // @ts-expect-error - Should not compile since no variables are declared
-  .step(({ variables: [v1, v2] }) => {
-    return {
-      a: `I love ${v1} ${v2}`,
-    };
-  });
-
-// TODO: Currently resolves variables to `any[]` which is incorrect
 givenBuilder<SampleGivenState>()
   .statement("Given a user")
   // @ts-expect-error - Should not compile since no variables are declared
@@ -130,13 +101,62 @@ givenBuilder<SampleGivenState>()
   });
 
 givenBuilder<SampleGivenState>()
-  .statement(
-    (v1: string, v2: number, v3: boolean) => `Given a user ${v1} ${v2} ${v3}`
-  )
-  // @ts-expect-error - Should not compile since the number of variables exceeds the number declared
-  .step(({ variables: [v1, v2, v3, v4] }) => {
+  .statement("Given a user")
+  // @ts-expect-error - Should not compile since no variables are declared
+  .step(({ variables: { v1 } }) => {
     return {
-      a: `I love ${v1} ${v2} ${v3} ${v4}`,
+      a: `I love ${v1}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  // @ts-expect-error - variables map values must be parsers
+  .variables({ v1: 42 })
+  .statement(v => `Given a user ${v.v1}`)
+  .step(() => {
+    return {
+      a: "user",
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .variables({ v1: stringParser })
+  // @ts-expect-error - the statement can only interpolate declared variable names
+  .statement(v => `Given a user ${v.nope}`)
+  .step(({ variables: { v1 } }) => {
+    return {
+      b: `I love ${v1}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .variables({ v1: intParser })
+  // @ts-expect-error - tokens are opaque placeholders, not usable as values
+  .statement(v => `Given a user ${v.v1 * 2}`)
+  .step(({ variables: { v1 } }) => {
+    return {
+      b: `I love ${v1}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .variables({ v1: intParser })
+  .statement(v => `Given a user ${v.v1}`)
+  .step(({ variables: { v1 } }) => {
+    // @ts-expect-error - v1 came from intParser, so it is a number, not a string
+    const name: string = v1;
+    return {
+      b: `I love ${name}`,
+    };
+  });
+
+givenBuilder<SampleGivenState>()
+  .variables({ v1: stringParser })
+  .statement(v => `Given a user ${v.v1}`)
+  // @ts-expect-error - only declared variable names exist on `variables`
+  .step(({ variables: { v2 } }) => {
+    return {
+      b: `I love ${v2}`,
     };
   });
 

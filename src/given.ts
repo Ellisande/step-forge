@@ -2,14 +2,17 @@
 
 import {
   FullDependencies,
-  GetFunctionArgs,
-  isString,
   RequiredOrOptional,
   Restrict,
   StepType,
 } from "./builderTypeUtils";
 import { addStep } from "./common";
-import { Parser } from "./parsers";
+import {
+  NoVariables,
+  VariableMap,
+  VariablesOf,
+  VariableTokens,
+} from "./variables";
 
 const GIVEN: StepType = "given";
 
@@ -26,66 +29,73 @@ type GivenInput<Variables, Given> = {
 type GivenOutput<GivenState> =
   Partial<GivenState> | Promise<Partial<GivenState>>;
 
+// Shared dependencies stage for both entry styles. `Variables` is already the
+// resolved shape the step function sees (`VariablesOf<Map>` for a token
+// statement, `NoVariables` for a string statement), so this stage carries no
+// map generics of its own.
 const givenDependencies =
-  <Variables, GivenState>(
-    statement: (...args: any[]) => string,
-    parsers?: Parser<any>[]
+  <Variables, Expr extends string, GivenState>(
+    statement: (tokens: any) => string,
+    variables: VariableMap
   ) =>
   <GivenDeps extends RequiredOrOptional<GivenState>>(dependencies: {
     given: GivenDeps;
   }) => ({
     step: addStep<
       GivenInput<Variables, Restrict<GivenState, GivenDeps>>,
-      GivenOutput<GivenState>
+      GivenOutput<GivenState>,
+      Expr
     >(
       statement,
       GIVEN,
       { ...dependencies, when: {}, then: {} } as FullDependencies,
-      parsers
+      variables
     ),
   });
 
-const givenParsers =
-  <Variables extends any[], GivenState>(
-    statement: (...args: any[]) => string
-  ) =>
-  <Parsers extends { [K in keyof Variables]: Parser<Variables[K]> }>(
-    parsers: Parsers
-  ) => ({
-    dependencies: givenDependencies<Variables, GivenState>(
-      statement,
-      parsers as unknown as Parser<any>[]
-    ),
-    step: addStep<GivenInput<Variables, never>, GivenOutput<GivenState>>(
-      statement,
-      GIVEN,
-      undefined,
-      parsers as unknown as Parser<any>[]
-    ),
+// The variable chain: `.variables({name: parser}).statement(v => ...)`. The
+// map fixes the variable names and (through each parser) their types; the
+// statement interpolates opaque tokens; the step function receives `variables`
+// as a name-keyed object. `Expr` captures the statement's template type so the
+// registered step's `expression` is a `${string}`-holed literal type.
+const givenVariables =
+  <GivenState>() =>
+  <Map extends VariableMap>(variables: Map) => ({
+    statement: <Expr extends string>(
+      statement: (tokens: VariableTokens<Map>) => Expr
+    ) => ({
+      dependencies: givenDependencies<VariablesOf<Map>, Expr, GivenState>(
+        statement,
+        variables
+      ),
+      step: addStep<
+        GivenInput<VariablesOf<Map>, never>,
+        GivenOutput<GivenState>,
+        Expr
+      >(statement, GIVEN, undefined, variables),
+    }),
   });
 
+// A statement with no variables is a plain string; `Expr` keeps its exact
+// literal type on the registered step's `expression`.
 const givenStatement =
   <GivenState>() =>
-  <Statement extends ((...args: [...any]) => string) | string>(
-    statement: Statement
-  ) => {
-    const normalizedStatement: (...args: any[]) => string = isString(statement)
-      ? () => statement
-      : (statement as (...args: any[]) => string);
-
-    type Variables = Statement extends string ? [] : GetFunctionArgs<Statement>;
+  <Expr extends string>(statement: Expr) => {
+    const statementFn = () => statement;
     return {
-      dependencies: givenDependencies<Variables, GivenState>(
-        normalizedStatement
+      dependencies: givenDependencies<NoVariables, Expr, GivenState>(
+        statementFn,
+        {}
       ),
-      parsers: givenParsers<Variables, GivenState>(normalizedStatement),
-      step: addStep<GivenInput<Variables, never>, GivenOutput<GivenState>>(
-        normalizedStatement,
-        GIVEN
-      ),
+      step: addStep<
+        GivenInput<NoVariables, never>,
+        GivenOutput<GivenState>,
+        Expr
+      >(statementFn, GIVEN, undefined, {}),
     };
   };
 
 export const givenBuilder = <GivenState>() => ({
   statement: givenStatement<GivenState>(),
+  variables: givenVariables<GivenState>(),
 });

@@ -146,7 +146,8 @@ function extractFromRegisterCall(
   const chain = collectCallChain(registerCall);
 
   let stepType: StepType | null = null;
-  let expression: string | null = null;
+  let statementCall: ts.CallExpression | null = null;
+  let variablesCall: ts.CallExpression | null = null;
   let dependencies: StepDefinitionMeta["dependencies"] = {
     given: {},
     when: {},
@@ -174,8 +175,13 @@ function extractFromRegisterCall(
     }
 
     if (name === "statement") {
-      expression = extractExpression(link);
+      statementCall = link;
       // Try to find the builder type by continuing up the chain
+      continue;
+    }
+
+    if (name === "variables") {
+      variablesCall = link;
       continue;
     }
 
@@ -185,6 +191,18 @@ function extractFromRegisterCall(
       continue;
     }
   }
+
+  // The expression needs the whole chain: the statement supplies the text and
+  // the interpolation order, the variables map supplies each hole's placeholder
+  // (and, for custom parsers, the regex pattern the matcher should enforce).
+  const { placeholders, parameters } = extractPlaceholderMap(
+    variablesCall,
+    sourceFile,
+    ctx
+  );
+  let expression: string | null = statementCall
+    ? extractExpression(statementCall, placeholders)
+    : null;
 
   // If we didn't find the builder or expression in the chain, try the "re-exported" pattern:
   // const Given = givenBuilder<T>().statement;
@@ -211,6 +229,7 @@ function extractFromRegisterCall(
     produces,
     sourceFile: sourceFile.fileName,
     line,
+    ...(Object.keys(parameters).length > 0 ? { parameters } : {}),
   };
 }
 
@@ -253,27 +272,271 @@ function getCallName(call: ts.CallExpression): string | null {
   return null;
 }
 
-function extractExpression(statementCall: ts.CallExpression): string | null {
+/**
+ * The placeholder each built-in parser renders. Recognised by export name so
+ * the common case (`.variables({ amount: intParser })`) resolves on the
+ * parse-only fast path with no type information at all.
+ */
+const BUILTIN_PARSER_PLACEHOLDERS: Record<string, string> = {
+  stringParser: "string",
+  intParser: "int",
+  numberParser: "float",
+  booleanParser: "boolean",
+};
+
+function extractExpression(
+  statementCall: ts.CallExpression,
+  placeholders: Map<string, string>
+): string | null {
   const arg = statementCall.arguments[0];
   if (!arg) return null;
 
   // String literal: .statement("a user")
-  if (ts.isStringLiteral(arg)) {
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
     return arg.text;
   }
 
-  // Arrow function with template literal: .statement((name: string) => `a user named ${name}`)
+  // Token statement: .variables({name: parser}).statement(v => `a ${v.name}`)
   if (ts.isArrowFunction(arg)) {
-    return extractExpressionFromArrowFunction(arg);
+    return extractExpressionFromArrowFunction(arg, placeholders);
   }
 
   return null;
 }
 
-function extractExpressionFromArrowFunction(
-  fn: ts.ArrowFunction
+/** What a parser expression resolves to: its placeholder name and, when the
+ *  declaration's `regexp` is statically visible, the regex pattern to enforce. */
+interface ResolvedParser {
+  placeholder: string;
+  pattern?: string;
+}
+
+/**
+ * Resolve the `.variables()` map into variable name → placeholder name
+ * (`amount` → `int`) plus a placeholder → regex-pattern record for custom
+ * parsers. An entry whose parser can't be resolved is simply absent — the
+ * template reconstruction falls back to `{string}` for it (after requesting a
+ * type-checked retry if one hasn't happened yet).
+ */
+function extractPlaceholderMap(
+  variablesCall: ts.CallExpression | null,
+  sourceFile: ts.SourceFile,
+  ctx: ExtractCtx
+): { placeholders: Map<string, string>; parameters: Record<string, string> } {
+  const placeholders = new Map<string, string>();
+  const parameters: Record<string, string> = {};
+  const arg = variablesCall?.arguments[0];
+  if (!arg || !ts.isObjectLiteralExpression(arg)) {
+    return { placeholders, parameters };
+  }
+
+  for (const prop of arg.properties) {
+    let varName: string | null = null;
+    let parserExpr: ts.Expression | null = null;
+    if (
+      ts.isPropertyAssignment(prop) &&
+      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))
+    ) {
+      varName = prop.name.text;
+      parserExpr = prop.initializer;
+    } else if (ts.isShorthandPropertyAssignment(prop)) {
+      varName = prop.name.text;
+      parserExpr = prop.name;
+    }
+    if (!varName || !parserExpr) continue;
+
+    const resolved = resolveParser(parserExpr, sourceFile, ctx);
+    if (resolved) {
+      placeholders.set(varName, resolved.placeholder);
+      if (resolved.pattern) parameters[resolved.placeholder] = resolved.pattern;
+    }
+  }
+  return { placeholders, parameters };
+}
+
+/**
+ * Resolve a parser expression to its placeholder (the `name` property) and,
+ * when visible, its regex pattern. Resolution order: built-in parsers by
+ * export name, an inline object literal, a same-file `const` declaration, and
+ * finally the type checker (the `name` property of a `Parser<T, "name">` is a
+ * string literal type — but `regexp` is a runtime value, so the checker branch
+ * yields no pattern). The checker branch is what makes parsers imported from
+ * other modules work; on the parse-only pass it flags `needsChecker` for the
+ * one-time retry.
+ */
+function resolveParser(
+  expr: ts.Expression,
+  sourceFile: ts.SourceFile,
+  ctx: ExtractCtx
+): ResolvedParser | null {
+  if (ts.isObjectLiteralExpression(expr)) {
+    return parserFromObjectLiteral(expr);
+  }
+
+  if (ts.isIdentifier(expr)) {
+    const builtin = BUILTIN_PARSER_PLACEHOLDERS[expr.text];
+    if (builtin) return { placeholder: builtin };
+
+    const local = parserFromLocalDeclaration(expr.text, sourceFile);
+    if (local) return local;
+  }
+
+  if (!ctx.checker) {
+    ctx.needsChecker = true;
+    return null;
+  }
+  try {
+    const type = ctx.checker.getTypeAtLocation(expr);
+    const nameSymbol = type.getProperty("name");
+    if (nameSymbol) {
+      const nameType = ctx.checker.getTypeOfSymbolAtLocation(nameSymbol, expr);
+      if (nameType.isStringLiteral()) return { placeholder: nameType.value };
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/** Resolve a parser object literal: `name` (required) and `regexp` (optional). */
+function parserFromObjectLiteral(
+  obj: ts.ObjectLiteralExpression
+): ResolvedParser | null {
+  let placeholder: string | null = null;
+  let pattern: string | undefined;
+  for (const prop of obj.properties) {
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+    if (prop.name.text === "name" && ts.isStringLiteral(prop.initializer)) {
+      placeholder = prop.initializer.text;
+    }
+    if (prop.name.text === "regexp") {
+      pattern = regexPatternFromExpression(prop.initializer);
+    }
+  }
+  return placeholder ? { placeholder, pattern } : null;
+}
+
+/**
+ * The regex source of a parser's `regexp` property: a regex literal's pattern,
+ * or the `|`-joined patterns of an array of regex literals (mirroring how the
+ * engine offers each as an alternative). Anything non-literal is skipped.
+ */
+function regexPatternFromExpression(expr: ts.Expression): string | undefined {
+  if (ts.isRegularExpressionLiteral(expr)) {
+    return regexSource(expr.text);
+  }
+  if (ts.isArrayLiteralExpression(expr)) {
+    const sources = expr.elements
+      .filter(ts.isRegularExpressionLiteral)
+      .map(el => regexSource(el.text));
+    if (sources.length === expr.elements.length && sources.length > 0) {
+      return sources.map(s => `(?:${s})`).join("|");
+    }
+  }
+  return undefined;
+}
+
+/** `/pattern/flags` → `pattern`. */
+function regexSource(literalText: string): string {
+  return literalText.slice(1, literalText.lastIndexOf("/"));
+}
+
+/**
+ * Syntactic same-file lookup for a custom parser: find
+ * `const colorParser = { name: "color", regexp: ..., ... }` (possibly behind
+ * `as`/`satisfies`/parens) and resolve it.
+ */
+function parserFromLocalDeclaration(
+  identifierName: string,
+  sourceFile: ts.SourceFile
+): ResolvedParser | null {
+  let found: ResolvedParser | null = null;
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === identifierName &&
+      node.initializer
+    ) {
+      let init: ts.Expression = node.initializer;
+      while (
+        ts.isAsExpression(init) ||
+        ts.isSatisfiesExpression(init) ||
+        ts.isParenthesizedExpression(init)
+      ) {
+        init = init.expression;
+      }
+      if (ts.isObjectLiteralExpression(init)) {
+        found = parserFromObjectLiteral(init);
+      }
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return found;
+}
+
+/**
+ * How the statement function binds its token object: a plain parameter
+ * (`v => ... ${v.amount}`) or a destructuring pattern
+ * (`({ amount }) => ... ${amount}`, renames included). Used to map each
+ * template hole back to its declared variable name.
+ */
+type TokenBinding =
+  | { kind: "identifier"; name: string }
+  | { kind: "destructured"; localToVariable: Map<string, string> };
+
+function tokenBindingOf(fn: ts.ArrowFunction): TokenBinding | null {
+  const param = fn.parameters[0];
+  if (!param) return { kind: "identifier", name: "" };
+  if (ts.isIdentifier(param.name)) {
+    return { kind: "identifier", name: param.name.text };
+  }
+  if (ts.isObjectBindingPattern(param.name)) {
+    const localToVariable = new Map<string, string>();
+    for (const element of param.name.elements) {
+      if (!ts.isIdentifier(element.name)) continue;
+      const local = element.name.text;
+      const declared =
+        element.propertyName && ts.isIdentifier(element.propertyName)
+          ? element.propertyName.text
+          : local;
+      localToVariable.set(local, declared);
+    }
+    return { kind: "destructured", localToVariable };
+  }
+  return null;
+}
+
+/** The declared variable name a template hole refers to, or null. */
+function tokenVariableName(
+  expr: ts.Expression,
+  binding: TokenBinding
 ): string | null {
-  const params = fn.parameters.map(p => p.name.getText());
+  if (binding.kind === "identifier") {
+    if (
+      ts.isPropertyAccessExpression(expr) &&
+      ts.isIdentifier(expr.expression) &&
+      expr.expression.text === binding.name
+    ) {
+      return expr.name.text;
+    }
+    return null;
+  }
+  if (ts.isIdentifier(expr)) {
+    return binding.localToVariable.get(expr.text) ?? null;
+  }
+  return null;
+}
+
+function extractExpressionFromArrowFunction(
+  fn: ts.ArrowFunction,
+  placeholders: Map<string, string>
+): string | null {
+  const binding = tokenBindingOf(fn);
+  if (!binding) return null;
 
   // The body should be a template expression or string literal
   let body = fn.body;
@@ -289,10 +552,14 @@ function extractExpressionFromArrowFunction(
   }
 
   if (ts.isTemplateExpression(body)) {
-    return reconstructExpressionFromTemplate(body, params);
+    return reconstructExpressionFromTemplate(body, binding, placeholders);
   }
 
   if (ts.isNoSubstitutionTemplateLiteral(body)) {
+    return body.text;
+  }
+
+  if (ts.isStringLiteral(body)) {
     return body.text;
   }
 
@@ -301,20 +568,18 @@ function extractExpressionFromArrowFunction(
 
 function reconstructExpressionFromTemplate(
   template: ts.TemplateExpression,
-  paramNames: string[]
+  binding: TokenBinding,
+  placeholders: Map<string, string>
 ): string {
   let result = template.head.text;
 
   for (const span of template.templateSpans) {
-    if (
-      ts.isIdentifier(span.expression) &&
-      paramNames.includes(span.expression.text)
-    ) {
-      result += "{string}";
-    } else {
-      // Non-parameter expression, use {string} as fallback
-      result += "{string}";
-    }
+    const varName = tokenVariableName(span.expression, binding);
+    const placeholder = varName ? placeholders.get(varName) : undefined;
+    // A hole whose parser couldn't be resolved falls back to {string}; the
+    // unresolved-parser path has already requested a type-checked retry, so
+    // this only sticks when even the checker can't name the placeholder.
+    result += `{${placeholder ?? "string"}}`;
     result += span.literal.text;
   }
 
@@ -489,8 +754,9 @@ function resolveReExportedCall(
     if (ts.isCallExpression(callExpr)) {
       const callee = callExpr.expression;
       if (ts.isIdentifier(callee) && BUILDER_NAMES[callee.text]) {
-        // The lastCall IS the statement call — extract expression from it
-        const expression = extractExpression(lastCall);
+        // The lastCall IS the statement call — extract expression from it.
+        // Re-exported statements are plain strings, so no variables map.
+        const expression = extractExpression(lastCall, new Map());
         return {
           stepType: BUILDER_NAMES[callee.text],
           expression,

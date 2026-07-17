@@ -25,17 +25,19 @@ Step Forge is a TypeScript library for writing **type-safe Gherkin step definiti
 
 ### Builder Chain
 
-Each Gherkin phase (given/when/then) has a builder that follows this chain:
+Each Gherkin phase (given/when/then) has a builder with two entry styles:
 
 ```
-builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(deps) → .step(fn)
+builder<State>().statement("plain string")                     → .dependencies?(deps) → .step(fn)
+builder<State>().variables({name: parser}).statement(v => ...) → .dependencies?(deps) → .step(fn)
 ```
 
-- **Statement**: A string or function. Functions define variables via parameters: `(name: string) => \`a user named ${name}\`` — each parameter becomes a placeholder in the step expression (`{string}` by default, or the placeholder of the matching parser).
-- **Parsers**: Optional, one per variable. A `Parser<T>` is a cucumber-expression _parameter type_: `{ name, regexp, parse }`. `name` drives the placeholder (`{name}`), `regexp` is how the value is recognised in step text, and `parse` transforms the match into `T`. The engine registers each parser into the expression's `ParameterTypeRegistry`, so matching and coercion happen in one pass (`parse` runs during matching, not after). This lets a parser introduce a novel placeholder like `{color}` that genuinely constrains matching. Built-in-named parsers (`{int}`/`{float}`/`{string}`) defer to cucumber's own built-in types. Default is `stringParser` for every variable.
+- **Variables**: A statement with variables must declare them first via `.variables({ amount: intParser, currency: stringParser })` — a name → parser map that is the single source of truth for each variable's name, placeholder, and TypeScript type. There is no positional style and no `.parsers()`; every variable's parser is explicit (use `stringParser` for strings).
+- **Statement**: A plain string (no variables), or — after `.variables()` — a function receiving one opaque token per declared variable: `` v => `a user named ${v.userName}` ``. At registration the statement is called once with recording tokens (`renderNamedExpression` in `src/variables.ts`): each token's `toString()` renders its parser's placeholder and records interpolation order, which is how positional captures map back to names at run time. Every declared variable must be interpolated exactly once or registration throws. Tokens are branded (`Variable<T, Name>`) so hovering `v.amount` shows `Variable<number, "int">` and any non-interpolation use is a type error.
+- **Parsers**: A `Parser<T, Name>` is a cucumber-expression _parameter type_: `{ name, regexp, parse }`. `name` drives the placeholder (`{name}`), `regexp` is how the value is recognised in step text, and `parse` transforms the match into `T`. The engine registers each parser into the expression's `ParameterTypeRegistry`, so matching and coercion happen in one pass (`parse` runs during matching, not after). This lets a parser introduce a novel placeholder like `{color}` that genuinely constrains matching. Built-in-named parsers (`{int}`/`{float}`/`{string}`) defer to cucumber's own built-in types. Declare custom parsers with a literal name type (`Parser<Color, "color">`) so hovers and the analyzer see the placeholder.
 - **Dependencies**: Declare which keys from other phases' state this step needs. Keys are marked `"required"` or `"optional"`. Required deps are validated at runtime; optional ones may be `undefined`.
-- **Step function**: Receives `{ variables, given, when, then }` — only the phases allowed by the builder type are accessible (given steps can't access when/then state).
-- **`.step(fn)` registers.** Calling `.step()` is the terminal action: it adds the step to the runtime registry (`globalRegistry`) and returns the step metadata (`{ statement, expression, dependencies, stepType, stepFunction }`). There is no `.register()` — calling `.step()` on a partial chain both builds and registers, so building a step purely to inspect its `.expression` also registers it.
+- **Step function**: Receives `{ variables, given, when, then }` — `variables` is a name-keyed object typed from the parsers; only the phases allowed by the builder type are accessible (given steps can't access when/then state).
+- **`.step(fn)` registers.** Calling `.step()` is the terminal action: it adds the step to the runtime registry (`globalRegistry`) and returns the step metadata (`{ statement, expression, dependencies, stepType, stepFunction }`). `expression` is literal-typed: the exact string for a string statement, a `${string}`-holed template type for a token statement. There is no `.register()` — calling `.step()` on a partial chain both builds and registers, so building a step purely to inspect its `.expression` also registers it.
 
 ### Phase Restrictions
 
@@ -45,9 +47,10 @@ builder<State>().statement(str | fn) → .parsers?(parsers) → .dependencies?(d
 
 ### Key Source Files
 
-- `src/common.ts` — `addStep()`: builds the step `expression` from the statement + parsers, wires the `execute(world, rawArgs)` body (parser coercion, dependency validation/narrowing, state merge), and registers into `globalRegistry` on `.step()`.
+- `src/common.ts` — `addStep()`: renders the step `expression` from the statement + variables map (via `renderNamedExpression`), wires the `execute(world, rawArgs)` body (dependency validation/narrowing, positional-capture → named-variables mapping, state merge), and registers into `globalRegistry` on `.step()`.
+- `src/variables.ts` — the named-variable machinery: `VariableMap`, `Variable<T, Name>` (branded token type), `VariableTokens`, `VariablesOf`, and `renderNamedExpression()` (token `toString()` dance that renders placeholders and records interpolation order; validates each variable is interpolated exactly once).
 - `src/given.ts`, `src/when.ts`, `src/then.ts` — Builder implementations with phase-specific type constraints
-- `src/parsers.ts` — `Parser<T>` (`{ name, regexp, parse }`, a cucumber-expression parameter type) plus builtins: `stringParser` (`{string}`, strips quotes), `intParser` (`{int}`), `numberParser` (`{float}`), `booleanParser` (custom `{boolean}`, matches `true`/`false`)
+- `src/parsers.ts` — `Parser<T, Name extends string = string>` (`{ name, regexp, parse }`, a cucumber-expression parameter type; `Name` is a literal type on the builtins) plus builtins: `stringParser` (`{string}`, strips quotes), `intParser` (`{int}`), `numberParser` (`{float}`), `booleanParser` (custom `{boolean}`, matches `true`/`false`)
 - `src/world.ts` — `BasicWorld<Given, When, Then>` with `MergeableWorldState` (lodash deep merge, arrays concatenate)
 - `src/builderTypeUtils.ts` — TypeScript utility types driving the builder's type safety
 - `src/utils.ts` — `requireFrom{Given,When,Then}()` for runtime required-dependency validation
@@ -82,6 +85,10 @@ In-repo the runner and the step files both import from `src/` directly (Bun runs
 
 The analyzer (`src/analyzer/`) statically checks `.feature` files against step definitions without running them. It parses features with `@cucumber/gherkin` (`gherkinParser.ts`), extracts step metadata from TypeScript source via the AST (`stepExtractor.ts`, keyed off the terminal `.step(...)` call), matches them (`stepMatcher.ts`), and runs rules (`rules/`). Exposed as the `analyze()` API (`@step-forge/step-forge/analyzer`) and the `step-forge-analyze` CLI.
 
+Expression extraction reconstructs each hole's **exact** placeholder from the `.variables()` map: built-in parsers resolve by export name on the parse-only fast path, same-file custom parsers by reading their declaration's `name` property (and `regexp`, emitted as `StepDefinitionMeta.parameters`), and imported custom parsers via the type checker (the `name` property of a `Parser<T, "name">` is a string-literal type — this triggers the one-time type-checked retry; `regexp` is a runtime value, so imported parsers get no pattern). An unresolvable hole falls back to `{string}`.
+
+Matching (`stepMatcher.ts`) is **strict and case-sensitive** like the engine: placeholders match by their real syntax — `{int}`/`{float}` numeric, `{string}` quoted, `{boolean}` true/false, custom placeholders by their extracted `parameters` pattern — with `.+` only for a placeholder the extractor couldn't resolve. `I deposit ten` against `I deposit {int}` is an undefined-step diagnostic, not a match. Tests: `src/analyzer/stepExtractor.test.ts` + `stepMatcher.test.ts` (units, against `features/analyzer/fixtures/steps.ts`), and the `valid-parsers.feature` / `mismatched-parsers.feature` scenarios in `analyzer.feature` (end-to-end).
+
 ### Build Output
 
 `tsdown` (configured in `tsdown.config.ts`, powered by rolldown) produces JS bundles and bundled type declarations in one pass. Two build groups:
@@ -93,7 +100,7 @@ Dependencies and `node:` builtins are externalized automatically. The `build/` d
 
 ## Exports
 
-- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders`, the hooks (`beforeScenario`/`afterScenario`/`beforeFeature`/`afterFeature`/`beforeAll`/`afterAll`), and types (`Parser`, `StateFromDependencies`, `RunnerOptions` for typing `step-forge.config.ts`, …). From `src/index.ts`.
+- `@step-forge/step-forge` — `givenBuilder`, `whenBuilder`, `thenBuilder`, `BasicWorld`, the parsers (`stringParser`, `intParser`, `numberParser`, `booleanParser`), `createBuilders` (pre-bound builders: `Given("...")` for strings, `Given.variables({...}).statement(v => ...)` for variables), the hooks (`beforeScenario`/`afterScenario`/`beforeFeature`/`afterFeature`/`beforeAll`/`afterAll`), and types (`Parser`, `Variable`, `VariableMap`, `VariableTokens`, `VariablesOf`, `NoVariables`, `StateFromDependencies`, `RunnerOptions` for typing `step-forge.config.ts`, …). From `src/index.ts`.
 - `@step-forge/step-forge/runtime` — `runScenario`, `compileRegistry`, `StepRegistry`, `globalRegistry`, `UndefinedStepError`, `AmbiguousStepError`, the `RunnerOptions` type, and their types.
 - `@step-forge/step-forge/analyzer` — `analyze()` and related APIs.
 - Bins: `step-forge` (the feature runner, `src/runtime/cli.ts`) and `step-forge-analyze` (the analyzer CLI). Both run under **Bun**.

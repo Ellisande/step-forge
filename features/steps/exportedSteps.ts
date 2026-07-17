@@ -1,12 +1,15 @@
 import { expect } from "earl";
-import { givenBuilder } from "../../src/given";
-import { thenBuilder } from "../../src/then";
-import { whenBuilder } from "../../src/when";
+import { createBuilders } from "../../src/init";
+import { numberParser, stringParser } from "../../src/parsers";
 import { GivenState, ThenState, WhenState } from "./world";
 
-const Given = givenBuilder<GivenState>().statement;
-const When = whenBuilder<GivenState, WhenState>().statement;
-const Then = thenBuilder<GivenState, WhenState, ThenState>().statement;
+// Demo of the pre-bound builder style: `Given("...")` for plain statements,
+// `Given.variables({...}).statement(v => ...)` for statements with variables.
+const { Given, When, Then } = createBuilders<
+  GivenState,
+  WhenState,
+  ThenState
+>();
 
 Given("a bank user").step(() => {
   return {
@@ -17,10 +20,10 @@ Given("a bank user").step(() => {
   };
 });
 
-When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
+When.variables({ amount: numberParser, currency: stringParser })
+  .statement(v => `I deposit ${v.amount} ${v.currency}`)
   .dependencies({ given: { user: "required" } })
-  .step(({ variables: [rawAmount, currency], given: { user } }) => {
-    const amount = parseFloat(rawAmount);
+  .step(({ variables: { amount, currency }, given: { user } }) => {
     return {
       deposit: {
         amount,
@@ -30,9 +33,9 @@ When((amount: string, currency: string) => `I deposit ${amount} ${currency}`)
     };
   });
 
-Then((amount: string) => `the balance is ${amount}`)
+Then.variables({ amount: numberParser })
+  .statement(v => `the balance is ${v.amount}`)
   .dependencies({ when: { deposit: "required" } })
-  .step(({ when: { deposit }, variables: [rawAmount] }) => {
-    const amount = parseFloat(rawAmount);
+  .step(({ when: { deposit }, variables: { amount } }) => {
     expect(deposit.amount).toEqual(amount);
   });

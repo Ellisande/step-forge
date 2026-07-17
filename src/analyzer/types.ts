@@ -9,6 +9,15 @@ export interface StepDefinitionMeta {
   produces: string[];
   sourceFile: string;
   line: number;
+  /**
+   * Regex source per custom placeholder used in `expression` (e.g.
+   * `{ color: "red|green|blue" }`), extracted from the parser declaration's
+   * `regexp` property when it is statically visible. The matcher uses these to
+   * constrain matching exactly like the runtime engine; built-in placeholders
+   * (`{string}`/`{int}`/`{float}`/`{boolean}`) don't need an entry, and a
+   * custom placeholder without one falls back to matching any text.
+   */
+  parameters?: Record<string, string>;
 }
 
 export interface ParsedScenario {

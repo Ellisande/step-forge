@@ -5,22 +5,53 @@ interface CompiledPattern {
   definition: StepDefinitionMeta;
 }
 
+/**
+ * What each built-in placeholder actually matches, mirroring the runtime
+ * engine's parameter types: `{string}` is a quoted value (escapes allowed),
+ * `{int}`/`{float}` are numeric, `{boolean}` is `true`/`false`. Equivalent to
+ * the `src/parsers.ts` regexps; the matcher unit tests pin the behavior.
+ */
+const BUILTIN_PLACEHOLDER_PATTERNS: Record<string, string> = {
+  string: `"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"|'[^'\\\\]*(?:\\\\.[^'\\\\]*)*'`,
+  int: "-?\\d+",
+  float: "-?\\d*\\.?\\d+",
+  boolean: "true|false",
+};
+
+/**
+ * Compile a step expression into an anchored, case-sensitive regex whose
+ * placeholders match by their real syntax: the extracted parser pattern for a
+ * custom placeholder (`def.parameters`), the built-in pattern for
+ * `{string}`/`{int}`/`{float}`/`{boolean}`, and `.+` only as the last resort
+ * for a placeholder the extractor couldn't resolve. This is what lets the
+ * analyzer catch a step whose text can't actually satisfy its parsers (e.g.
+ * `I deposit ten` against `I deposit {int}`) instead of silently matching.
+ */
+function compileExpression(def: StepDefinitionMeta): RegExp {
+  const parts = def.expression.split(/(\{[^}]*\})/);
+  let regexStr = "";
+  for (const part of parts) {
+    const placeholder = /^\{([^}]*)\}$/.exec(part);
+    if (placeholder) {
+      const name = placeholder[1];
+      const pattern =
+        def.parameters?.[name] ?? BUILTIN_PLACEHOLDER_PATTERNS[name] ?? ".+";
+      regexStr += `(${pattern})`;
+    } else {
+      regexStr += part.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${regexStr}$`);
+}
+
 function compileDefinitions(
   definitions: StepDefinitionMeta[]
 ): CompiledPattern[] {
   const compiled: CompiledPattern[] = [];
   for (const def of definitions) {
     try {
-      // Replace {paramType} placeholders with (.+) to match any value,
-      // regardless of which parser placeholder ({string}, {int}, ...) the
-      // step definition declared.
-      const placeholder = "###PLACEHOLDER###";
-      const regexStr = def.expression
-        .replace(/\{[^}]+\}/g, placeholder)
-        .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
-        .replace(new RegExp(placeholder, "g"), "(.+)");
       compiled.push({
-        regex: new RegExp(`^${regexStr}$`, "i"),
+        regex: compileExpression(def),
         definition: def,
       });
     } catch {
